@@ -29,8 +29,13 @@ const workspaceNav: NavItem[] = [
   { label: "대시보드", href: "/dashboard", icon: LayoutDashboard },
   { label: "프로젝트", href: "/projects", icon: FolderKanban },
   { label: "기획 및 요구사항", href: "/planning", icon: ClipboardList },
-  { label: "결함 관리", icon: Bug },
+  { label: "\uACB0\uD568 \uAD00\uB9AC", href: "/defects", icon: Bug },
 ];
+const notifications = [
+  { id: "assignment", title: "\uC0C8 \uC694\uAD6C\uC0AC\uD56D\uC774 \uBC30\uC815\uB418\uC5C8\uC2B5\uB2C8\uB2E4.", detail: "REQ-104 · \uAC80\uC0C9 \uC870\uAC74 UI \uAC1C\uC120", time: "10\uBD84 \uC804" },
+  { id: "change", title: "\uB2F4\uB2F9 \uBB38\uC11C\uC5D0 \uBCC0\uACBD\uC774 \uC788\uC2B5\uB2C8\uB2E4.", detail: "\uD68C\uC6D0 \uD1B5\uD569 \uAE30\uD68D\uC11C · v3", time: "2\uC2DC\uAC04 \uC804" },
+];
+
 const adminNav: NavItem[] = [
   { label: "사용자 및 권한", icon: Users },
   { label: "설정", icon: Settings },
@@ -43,6 +48,8 @@ export function WorkspaceShell({ pageTitle, children }: WorkspaceShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [read, setRead] = useState(false);
 
   useEffect(() => {
     const savedUser = sessionStorage.getItem("issue-demo-user");
@@ -142,7 +149,15 @@ export function WorkspaceShell({ pageTitle, children }: WorkspaceShellProps) {
             </div>
             <div className="flex items-center gap-4">
               <span className="hidden text-xs text-muted md:block">FRONTEND DEMO</span>
-              <Bell size={19} className="text-[#5D5076]" />
+              <div className="relative">
+                <button type="button" onClick={() => { setNotificationsOpen((open) => !open); setRead(true); }} aria-label={"알림"} aria-expanded={notificationsOpen} className="relative rounded-lg p-2 text-[#5D5076] hover:bg-lavender">
+                  <Bell size={19} />{!read && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[#D9435F] ring-2 ring-white" />}
+                </button>
+                {notificationsOpen && <div role="status" className="absolute right-0 z-30 mt-2 w-[340px] overflow-hidden rounded-xl border border-line bg-white shadow-soft">
+                  <div className="flex items-center justify-between border-b border-line px-4 py-3"><div><p className="text-sm font-bold text-[#211A35]">{"알림"}</p><p className="mt-0.5 text-xs text-muted">{"담당 업무와 문서 변경 알림"}</p></div><span className="text-xs font-semibold text-violet">{"데모"}</span></div>
+                  <div className="divide-y divide-line">{notifications.map((item) => <button key={item.id} type="button" onClick={() => { setNotificationsOpen(false); router.push("/planning"); }} className="w-full px-4 py-3 text-left hover:bg-[#FAF8FF]"><div className="flex gap-3"><span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-violet" /><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-[#4D405F]">{item.title}</p><p className="mt-1 truncate text-xs text-muted">{item.detail}</p><p className="mt-1 text-xs text-[#978BAA]">{item.time}</p></div></div></button>)}</div>
+                </div>}
+              </div>
               <div className="relative">
                 <button
                   type="button"

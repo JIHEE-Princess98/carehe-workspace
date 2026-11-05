@@ -10,6 +10,10 @@ export interface PlanningDocument {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  service?: "ADMIN" | "USER";
+  environments?: ("DEV" | "STAGING" | "LIVE")[];
+  attachmentCount?: number;
+  attachments?: { name: string; size: number }[];
 }
 export interface PlanningRequirement {
   requirementId: string;
@@ -23,6 +27,10 @@ export interface PlanningRequirement {
   requirementContent: string;
   createdAt: string;
   updatedAt: string;
+  service?: "ADMIN" | "USER";
+  environments?: ("DEV" | "STAGING" | "LIVE")[];
+  attachmentCount?: number;
+  attachments?: { name: string; size: number }[];
 }
 const docs: PlanningDocument[] = [
   {
@@ -103,6 +111,19 @@ const reqs: PlanningRequirement[] = [
     updatedAt: "2026.10.24",
   },
 ];
+const paginationDemoRequirements: PlanningRequirement[] = Array.from({ length: 12 }, (_, index) => ({
+  requirementId: `REQ-DEMO-${index + 4}`,
+  documentId: "DOC-1001",
+  requirementNo: `REQ-${String(index + 4).padStart(3, "0")}`,
+  requirementTitle: `\uC6CC\uD06C\uC2A4\uD398\uC774\uC2A4 \uC694\uAD6C\uC0AC\uD56D \uC2DC\uB098\uB9AC\uC624 ${index + 1}`,
+  requestType: index % 3 === 0 ? "NEW" : index % 3 === 1 ? "IMPROVEMENT" : "OTHER",
+  priority: index % 3 === 0 ? "HIGH" : index % 3 === 1 ? "NORMAL" : "LOW",
+  requirementStatus: index % 4 === 0 ? "NEW" : index % 4 === 1 ? "DISCUSSING" : index % 4 === 2 ? "CONFIRMED" : "IN_PROGRESS",
+  assignee: index % 2 === 0 ? "\uAE40\uC740\uC815" : "\uBC15\uC11C\uC6B0",
+  requirementContent: `\uD398\uC774\uC9C0\uB124\uC774\uC158 \uD655\uC778\uC6A9 \uBAA9\uC5C5 \uC694\uAD6C\uC0AC\uD56D ${index + 1}\uC785\uB2C8\uB2E4.`,
+  createdAt: `2026.10.${String(25 + index).padStart(2, "0")}`,
+  updatedAt: `2026.10.${String(25 + index).padStart(2, "0")}`,
+}));
 export const documentStatusLabel: Record<DocumentStatus, string> = {
   DRAFT: "진행 전",
   REVIEWING: "검토 중",
@@ -128,7 +149,7 @@ export const priorityLabel: Record<PlanningRequirement["priority"], string> = {
   HIGH: "높음",
 };
 export const getMockPlanningDocuments = () => docs;
-export const getMockPlanningRequirements = () => reqs;
+export const getMockPlanningRequirements = () => [...reqs, ...paginationDemoRequirements];
 export function createMockDocument(
   v: Omit<PlanningDocument, "documentId" | "documentNo" | "createdAt" | "updatedAt" | "createdBy">,
 ): PlanningDocument {
