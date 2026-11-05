@@ -151,7 +151,7 @@ export default function ProjectDetailPage() {
           )}
         </main>
       </div>
-      {selected && tab !== "overview" && <ItemDrawer kind={tab} item={selected} onClose={() => setSelected(null)} />}
+      {selected && tab !== "overview" && <ItemDrawer kind={tab} item={selected} onClose={() => setSelected(null)} onViewDetail={() => { setSelected(null); if (tab === "defects") router.push("/defects"); else if (tab === "documents" || tab === "requirements") router.push(`/planning?serviceType=ADMIN&projectId=${projectId}`); }} />}
       {excelOpen && <ExcelRequirementImport onClose={() => setExcelOpen(false)} />}
     </WorkspaceShell>
   );
@@ -358,10 +358,12 @@ function ItemDrawer({
   kind,
   item,
   onClose,
+  onViewDetail,
 }: {
   kind: Exclude<WorkspaceKind, "overview">;
   item: WorkspaceItem;
   onClose: () => void;
+  onViewDetail: () => void;
 }) {
   const target = kind === "requirements" ? "requirement" : kind === "defects" ? "issue" : null;
   const history = target ? getMockStatusHistory(target, item.id) : [];
@@ -426,11 +428,11 @@ function ItemDrawer({
             </section>
           )}
         </div>
-        <div className="border-t border-line p-5">
-          <button type="button" className="primary w-full px-3 py-2.5 text-sm">
-            상세 보기 <ExternalLink size={15} className="ml-1 inline" />
+        {kind !== "members" && <div className="border-t border-line p-5">
+          <button type="button" onClick={onViewDetail} className="primary w-full px-3 py-2.5 text-sm">
+            {kind === "defects" ? "결함 관리에서 상세 보기" : "기획 및 요구사항에서 상세 보기"} <ExternalLink size={15} className="ml-1 inline" />
           </button>
-        </div>
+        </div>}
       </aside>
     </div>
   );
