@@ -30,7 +30,9 @@ export default function Login() {
     window.setTimeout(() => router.push("/dashboard"), 240);
   }
   return (
-    <main className={`min-h-dvh bg-[radial-gradient(circle_at_15%_15%,#E8D8FF,transparent_42%),radial-gradient(circle_at_90%_85%,#DED3FF,transparent_45%),#F7F5FF] p-3 sm:p-6 ${leaving ? "login-leaving" : ""}`}>
+    <main
+      className={`min-h-dvh bg-[radial-gradient(circle_at_15%_15%,#E8D8FF,transparent_42%),radial-gradient(circle_at_90%_85%,#DED3FF,transparent_45%),#F7F5FF] p-3 sm:p-6 ${leaving ? "login-leaving" : ""}`}
+    >
       <div className="mx-auto grid min-h-[calc(100dvh-1.5rem)] max-w-[1440px] overflow-hidden rounded-[32px] border border-white/90 bg-white/75 shadow-[0_28px_80px_rgba(70,35,125,.14)] sm:min-h-[calc(100dvh-3rem)] lg:grid-cols-[1.08fr_.92fr]">
         <section className="relative hidden overflow-hidden bg-gradient-to-br from-[#F1EEF6] via-[#FAF9FC] to-[#E8E2EF] p-12 lg:flex lg:flex-col lg:justify-between">
           <Brand />
@@ -51,9 +53,7 @@ export default function Login() {
             <div className="relative mt-12 max-w-lg rounded-[24px] border border-white/90 bg-white/75 p-6 shadow-[0_16px_42px_rgba(67,45,98,.08)] backdrop-blur">
               <div className="mb-5 flex items-center justify-between">
                 <span className="font-bold">이번 주 업무 현황</span>
-                <span className="rounded-full bg-lavender px-3 py-1 text-xs font-bold text-violet">
-                  Overview
-                </span>
+                <span className="rounded-full bg-lavender px-3 py-1 text-xs font-bold text-violet">Overview</span>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 {[
@@ -62,23 +62,19 @@ export default function Login() {
                   ["86", "처리 완료"],
                 ].map(([v, k]) => (
                   <div key={k} className="rounded-xl bg-[#F7F4FE] p-3">
-                    <div className="text-3xl font-bold text-[#6B4A91]">
-                      {v}
-                    </div>
+                    <div className="text-3xl font-bold text-[#6B4A91]">{v}</div>
                     <div className="mt-1 text-xs text-muted">{k}</div>
                   </div>
                 ))}
               </div>
               <div className="mt-5 flex h-20 items-end gap-2">
-                {[30, 46, 38, 65, 50, 75, 58, 87, 67, 96, 79, 100].map(
-                  (v, i) => (
-                    <div
-                      key={i}
-                      className="flex-1 rounded-t-lg bg-gradient-to-t from-[#8463AB] to-[#DCD2E9]"
-                      style={{ height: `${v}%` }}
-                    />
-                  ),
-                )}
+                {[30, 46, 38, 65, 50, 75, 58, 87, 67, 96, 79, 100].map((v, i) => (
+                  <div
+                    key={i}
+                    className="flex-1 rounded-t-lg bg-gradient-to-t from-[#8463AB] to-[#DCD2E9]"
+                    style={{ height: `${v}%` }}
+                  />
+                ))}
               </div>
             </div>
           </div>
@@ -104,20 +100,11 @@ export default function Login() {
               <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-lavender text-violet">
                 <LockKeyhole size={24} />
               </div>
-              <p className="mb-2 text-sm font-bold text-violet">WELCOME BACK</p>
-              <h2 className="text-4xl font-extrabold tracking-tight">
-                다시 만나 반가워요.
-              </h2>
-              <p className="mt-3 leading-7 text-muted">
-                계정으로 로그인하고 업무를 이어가세요.
-              </p>
+              <p className="mt-3 leading-7 text-muted">계정으로 로그인하고 업무를 이어가세요.</p>
             </div>
             <form onSubmit={submit} className="space-y-5">
               <div>
-                <label
-                  htmlFor="login-id"
-                  className="mb-2 block text-sm font-bold"
-                >
+                <label htmlFor="login-id" className="mb-2 block text-sm font-bold">
                   아이디
                 </label>
                 <input
@@ -130,10 +117,7 @@ export default function Login() {
                 />
               </div>
               <div>
-                <label
-                  htmlFor="login-password"
-                  className="mb-2 block text-sm font-bold"
-                >
+                <label htmlFor="login-password" className="mb-2 block text-sm font-bold">
                   비밀번호
                 </label>
                 <div className="relative">
@@ -157,10 +141,7 @@ export default function Login() {
                 </div>
               </div>
               {error && (
-                <p
-                  role="alert"
-                  className="rounded-lg bg-red-50 p-3 text-sm text-red-700"
-                >
+                <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
                   {error}
                 </p>
               )}
@@ -172,12 +153,9 @@ export default function Login() {
               <div className="mb-1 flex items-center gap-2 font-bold">
                 <CheckCircle2 size={16} /> 프론트엔드 데모 모드
               </div>
-              현재는 실제 인증 API가 연결되지 않았습니다. 임의의 아이디와
-              비밀번호로 화면을 체험할 수 있습니다.
+              현재는 실제 인증 API가 연결되지 않았습니다. 임의의 아이디와 비밀번호로 화면을 체험할 수 있습니다.
             </div>
-            <p className="mt-12 text-center text-xs text-muted">
-              © Carehe Issue Workspace
-            </p>
+            <p className="mt-12 text-center text-xs text-muted">© Carehe Issue Workspace</p>
           </div>
         </section>
       </div>
