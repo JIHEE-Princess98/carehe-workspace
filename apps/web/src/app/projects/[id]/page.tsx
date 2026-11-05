@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ChevronRight, ExternalLink, History, Search, X } from "lucide-react";
 import type { ProjectStatus } from "@carehe/shared-types";
 import {
@@ -15,6 +15,7 @@ import {
   type WorkspaceKind,
 } from "../../../lib/projects";
 import { WorkspaceShell } from "../../../components/WorkspaceShell";
+import { ExcelRequirementImport } from "../../../components/ExcelRequirementImport";
 
 const tabs: { id: WorkspaceKind; label: string }[] = [
   { id: "overview", label: "개요" },
@@ -37,6 +38,7 @@ const statusStyle: Record<ProjectStatus | WorkspaceItemStatus, string> = {
 };
 
 export default function ProjectDetailPage() {
+  const router = useRouter();
   const params = useParams<{ id: string }>();
   const projectId = Array.isArray(params.id) ? params.id[0] : params.id;
   const project = getMockProject(projectId);
@@ -44,6 +46,7 @@ export default function ProjectDetailPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
   const [selected, setSelected] = useState<WorkspaceItem | null>(null);
+  const [excelOpen, setExcelOpen] = useState(false);
 
   useEffect(() => {
     setSelected(null);
@@ -139,6 +142,8 @@ export default function ProjectDetailPage() {
               status={status}
               onQuery={setQuery}
               onStatus={setStatus}
+              onExcelImport={() => setExcelOpen(true)}
+              onDocumentCreate={() => router.push("/planning?serviceType=ADMIN&create=document")}
               onSelect={(item) => {
                 if (tab !== "members") setSelected(item);
               }}
@@ -146,7 +151,8 @@ export default function ProjectDetailPage() {
           )}
         </main>
       </div>
-      {selected && tab !== "overview" && <ItemDrawer kind={tab} item={selected} onClose={() => setSelected(null)} />}
+      {selected && tab !== "overview" && <ItemDrawer kind={tab} item={selected} onClose={() => setSelected(null)} onViewDetail={() => { setSelected(null); if (tab === "defects") router.push("/defects"); else if (tab === "documents" || tab === "requirements") router.push(`/planning?serviceType=ADMIN&projectId=${projectId}`); }} />}
+      {excelOpen && <ExcelRequirementImport onClose={() => setExcelOpen(false)} />}
     </WorkspaceShell>
   );
 }
@@ -212,6 +218,8 @@ function WorkspaceList({
   onQuery,
   onStatus,
   onSelect,
+  onExcelImport,
+  onDocumentCreate,
 }: {
   tab: Exclude<WorkspaceKind, "overview">;
   items: WorkspaceItem[];
@@ -220,6 +228,8 @@ function WorkspaceList({
   onQuery: (value: string) => void;
   onStatus: (value: string) => void;
   onSelect: (item: WorkspaceItem) => void;
+  onExcelImport: () => void;
+  onDocumentCreate: () => void;
 }) {
   const labels: Record<Exclude<WorkspaceKind, "overview">, string> = {
     documents: "기획 문서",
@@ -240,9 +250,7 @@ function WorkspaceList({
           <h2 className="text-lg font-bold">{labels[tab]}</h2>
           <p className="mt-1 text-sm text-muted">항목을 선택하면 상세 내용을 열 수 있습니다.</p>
         </div>
-        <button type="button" className="primary px-4 py-2.5 text-sm">
-          항목 추가
-        </button>
+        <button type="button" onClick={tab === "requirements" ? onExcelImport : tab === "documents" ? onDocumentCreate : undefined} className="primary px-4 py-2.5 text-sm">{tab === "requirements" ? "\uC5D1\uC140\uB85C \uB4F1\uB85D\uD558\uAE30" : "\uD56D\uBAA9 \uCD94\uAC00"}</button>
       </div>
       <div className="mb-4 flex flex-col gap-2 sm:flex-row">
         <label className="flex h-10 flex-1 items-center gap-2 rounded-lg border border-line bg-white px-3">
@@ -350,10 +358,12 @@ function ItemDrawer({
   kind,
   item,
   onClose,
+  onViewDetail,
 }: {
   kind: Exclude<WorkspaceKind, "overview">;
   item: WorkspaceItem;
   onClose: () => void;
+  onViewDetail: () => void;
 }) {
   const target = kind === "requirements" ? "requirement" : kind === "defects" ? "issue" : null;
   const history = target ? getMockStatusHistory(target, item.id) : [];
@@ -418,11 +428,11 @@ function ItemDrawer({
             </section>
           )}
         </div>
-        <div className="border-t border-line p-5">
-          <button type="button" className="primary w-full px-3 py-2.5 text-sm">
-            상세 보기 <ExternalLink size={15} className="ml-1 inline" />
+        {kind !== "members" && <div className="border-t border-line p-5">
+          <button type="button" onClick={onViewDetail} className="primary w-full px-3 py-2.5 text-sm">
+            {kind === "defects" ? "결함 관리에서 상세 보기" : "기획 및 요구사항에서 상세 보기"} <ExternalLink size={15} className="ml-1 inline" />
           </button>
-        </div>
+        </div>}
       </aside>
     </div>
   );
