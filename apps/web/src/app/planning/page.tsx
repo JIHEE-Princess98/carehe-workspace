@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { FileText, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { DocumentStatus, RequirementProgressStatus, RequirementType } from "@carehe/shared-types";
@@ -31,6 +31,14 @@ type ReqDraft = Pick<
 >;
 
 export default function PlanningPage() {
+  return (
+    <Suspense fallback={null}>
+      <PlanningContent />
+    </Suspense>
+  );
+}
+
+function PlanningContent() {
   const router = useRouter();
   const params = useSearchParams();
   const projects = getMockProjects();
