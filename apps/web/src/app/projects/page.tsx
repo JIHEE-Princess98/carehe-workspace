@@ -51,7 +51,7 @@ export default function ProjectsPage() {
   return (
     <WorkspaceShell pageTitle="프로젝트">
       <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto p-5 md:p-7">
-        <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+        <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="mb-1 text-xs font-semibold tracking-wide text-violet">WORKSPACE</p>
             <h1 className="text-[26px] font-bold tracking-tight md:text-[30px]">프로젝트</h1>
@@ -75,7 +75,7 @@ export default function ProjectsPage() {
           </div>
         )}
 
-        <section aria-label="프로젝트 검색" className="surface mb-5 rounded-xl p-4">
+        <section aria-label="프로젝트 검색" className="mb-5 rounded-2xl border border-[#E8E0F1] bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-3 lg:flex-row">
             <label className="flex h-11 flex-1 items-center gap-2 rounded-lg border border-line bg-white px-3">
               <Search size={17} className="text-muted" />
@@ -114,8 +114,11 @@ export default function ProjectsPage() {
           </div>
         </section>
 
-        <section className="surface overflow-hidden rounded-xl" aria-label="프로젝트 목록">
-          <div className="overflow-x-auto">
+        <section className="overflow-hidden rounded-2xl border border-[#E8E0F1] bg-white shadow-sm" aria-label="프로젝트 목록">
+          <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
+            {visibleProjects.map((project) => <ProjectCard key={project.projectId} project={project} />)}
+          </div>
+          <div className="hidden overflow-x-auto">
             <table className="w-full min-w-[820px] text-left text-sm">
               <thead className="border-b border-line bg-[#F5F1FC] text-[#655A78]">
                 <tr>
@@ -209,6 +212,11 @@ export default function ProjectsPage() {
       {drawerOpen && <ProjectDrawer onClose={() => setDrawerOpen(false)} onSave={addProject} />}
     </WorkspaceShell>
   );
+}
+
+function ProjectCard({ project }: { project: ProjectSummary }) {
+  const initial = project.projectTitle.slice(0, 1).toUpperCase();
+  return <article className="group relative overflow-hidden rounded-2xl border border-[#EAE4F2] bg-gradient-to-b from-white to-[#FCFAFF] p-5 transition duration-200 hover:-translate-y-1 hover:border-[#CDBAEF] hover:shadow-lg"><div className="absolute right-0 top-0 h-20 w-20 rounded-bl-[80px] bg-[#F3EEFC] transition group-hover:bg-[#E9DFFD]" /><div className="relative flex items-start justify-between gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#EEE5FF] text-lg font-black text-violet">{initial}</span><span className={`tag ${statusStyle[project.projectStatus]}`}>{projectStatusLabel[project.projectStatus]}</span></div><div className="relative mt-5"><Link href={`/projects/${project.projectId}`} className="line-clamp-1 text-lg font-bold text-[#211A35] transition group-hover:text-violet">{project.projectTitle}</Link><p className="mt-2 line-clamp-2 min-h-10 text-sm leading-5 text-[#746988]">{project.description || "프로젝트 설명이 없습니다."}</p></div><div className="relative mt-5 grid grid-cols-2 gap-2"><div className="rounded-xl bg-[#F6F2FC] px-3 py-2.5"><p className="text-[11px] font-bold text-[#85799A]">요구사항</p><p className="mt-1 text-lg font-bold text-[#45345D]">{project.requirementCount}</p></div><div className={`rounded-xl px-3 py-2.5 ${project.openDefectCount ? "bg-[#FFF1F3]" : "bg-[#EEF8F2]"}`}><p className={`text-[11px] font-bold ${project.openDefectCount ? "text-[#B14C60]" : "text-[#43826A]"}`}>미처리 결함</p><p className={`mt-1 text-lg font-bold ${project.openDefectCount ? "text-[#A12E41]" : "text-[#287D61]"}`}>{project.openDefectCount}</p></div></div><div className="relative mt-5 flex items-center justify-between border-t border-[#EEE8F5] pt-4"><span className="text-xs text-[#978BAA]">최근 수정 {project.updatedAt}</span><Link href={`/projects/${project.projectId}`} className="inline-flex items-center gap-1 text-xs font-bold text-violet hover:underline">상세 보기 <ChevronRight size={15} /></Link></div></article>;
 }
 
 function EmptyState({

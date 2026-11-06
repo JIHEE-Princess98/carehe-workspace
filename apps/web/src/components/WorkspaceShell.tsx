@@ -10,6 +10,7 @@ import {
   ClipboardList,
   FolderKanban,
   LayoutDashboard,
+  KeyRound,
   LogOut,
   Menu,
   Moon,
@@ -37,8 +38,10 @@ const notifications = [
 ];
 
 const adminNav: NavItem[] = [
-  { label: "사용자 및 권한", icon: Users },
-  { label: "설정", icon: Settings },
+  { label: "공통코드 관리", icon: Settings },
+  { label: "권한 관리", icon: KeyRound },
+  { label: "사용자 관리", icon: Users },
+  { label: "메뉴 관리", icon: ClipboardList },
 ];
 
 export function WorkspaceShell({ pageTitle, children }: WorkspaceShellProps) {
@@ -123,7 +126,7 @@ export function WorkspaceShell({ pageTitle, children }: WorkspaceShellProps) {
             <nav aria-label="주 메뉴" className="space-y-1">
               {workspaceNav.map(navButton)}
             </nav>
-            <div className="mb-3 mt-9 px-4 text-[11px] font-bold tracking-[.16em] text-[#978BAA]">ADMINISTRATION</div>
+            <div className="mb-3 mt-9 px-4 text-[11px] font-bold tracking-[.16em] text-[#978BAA]">ADMIN STATION</div>
             <nav aria-label="관리 메뉴" className="space-y-1">
               {adminNav.map(navButton)}
             </nav>
