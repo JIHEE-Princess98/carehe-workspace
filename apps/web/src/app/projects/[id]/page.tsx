@@ -15,7 +15,8 @@ import {
   type WorkspaceKind,
 } from "../../../lib/projects";
 import { WorkspaceShell } from "../../../components/WorkspaceShell";
-import { ExcelRequirementImport } from "../../../components/ExcelRequirementImport";
+import { ConfirmDialog } from "../../../components/ConfirmDialog";
+import { issuePriorityLabel, issueStatusLabel, mockDefectIssues } from "../../../lib/defects";
 
 const tabs: { id: WorkspaceKind; label: string }[] = [
   { id: "overview", label: "개요" },
@@ -46,7 +47,9 @@ export default function ProjectDetailPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
   const [selected, setSelected] = useState<WorkspaceItem | null>(null);
-  const [excelOpen, setExcelOpen] = useState(false);
+  const [memberDrawer, setMemberDrawer] = useState(false);
+  const [members, setMembers] = useState<WorkspaceItem[]>(() => getWorkspaceItems("members"));
+  const [memberToRemove, setMemberToRemove] = useState<WorkspaceItem | null>(null);
 
   useEffect(() => {
     setSelected(null);
@@ -65,10 +68,25 @@ export default function ProjectDetailPage() {
 
   const items = useMemo(
     () =>
-      getWorkspaceItems(tab).filter(
+      (tab === "members"
+        ? members
+        : tab === "defects"
+          ? mockDefectIssues
+              .filter((issue) => issue.projectId === projectId)
+              .map((issue) => ({
+                id: issue.id,
+                title: issue.title,
+                status: issueStatusLabel[issue.status] as WorkspaceItemStatus,
+                meta: `${issuePriorityLabel[issue.priority]} · ${issue.environment ?? "-"}`,
+                owner: issue.author,
+                updatedAt: issue.updatedAt,
+                description: issue.content.replace(/<[^>]*>/g, ""),
+                related: issue.requirement ?? "연결된 요구사항 없음",
+              }))
+          : getWorkspaceItems(tab)).filter(
         (item) => item.title.includes(query.trim()) && (status === "ALL" || item.status === status),
       ),
-    [query, status, tab],
+    [members, query, status, tab],
   );
 
   if (!project) {
@@ -142,8 +160,8 @@ export default function ProjectDetailPage() {
               status={status}
               onQuery={setQuery}
               onStatus={setStatus}
-              onExcelImport={() => setExcelOpen(true)}
-              onDocumentCreate={() => router.push("/planning?serviceType=ADMIN&create=document")}
+              onMemberAdd={() => setMemberDrawer(true)}
+              onMemberRemove={(memberId) => setMemberToRemove(members.find((member) => member.id === memberId) ?? null)}
               onSelect={(item) => {
                 if (tab !== "members") setSelected(item);
               }}
@@ -151,12 +169,20 @@ export default function ProjectDetailPage() {
           )}
         </main>
       </div>
-      {selected && tab !== "overview" && <ItemDrawer kind={tab} item={selected} onClose={() => setSelected(null)} onViewDetail={() => { setSelected(null); if (tab === "defects") router.push("/defects"); else if (tab === "documents" || tab === "requirements") router.push(`/planning?serviceType=ADMIN&projectId=${projectId}`); }} />}
-      {excelOpen && <ExcelRequirementImport onClose={() => setExcelOpen(false)} />}
+      {selected && tab !== "overview" && <ItemDrawer kind={tab} item={selected} onClose={() => setSelected(null)} onViewDetail={() => { setSelected(null); if (tab === "defects") router.push(`/defects?serviceType=${selected.meta.includes("USER") ? "USER" : "ADMIN"}&issueId=${selected.id}`); else if (tab === "documents" || tab === "requirements") router.push(`/planning?serviceType=ADMIN&projectId=${projectId}`); }} />}
+      {memberDrawer && <MemberDrawer onClose={() => setMemberDrawer(false)} onSave={(nextMembers) => { setMembers((current) => [...current, ...nextMembers]); setMemberDrawer(false); }} />}
+      {memberToRemove && <ConfirmDialog title="참여자를 제외할까요?" description={`${memberToRemove.title}님은 이 프로젝트 참여자 목록에서 제외됩니다. 실제 권한 변경은 API 연동 후 처리됩니다.`} confirmLabel="제외하기" tone="danger" onClose={() => setMemberToRemove(null)} onConfirm={() => { setMembers((current) => current.filter((member) => member.id !== memberToRemove.id)); setMemberToRemove(null); }} />}
     </WorkspaceShell>
   );
 }
 
+function MemberDrawer({ onClose, onSave }: { onClose: () => void; onSave: (members: WorkspaceItem[]) => void }) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const groups = [{ team: "기획팀", people: ["지유진", "임준수", "한예리"] }, { team: "개발팀", people: ["김지희C", "김지희D"] }];
+  function toggle(name: string) { setSelected((current) => current.includes(name) ? current.filter((item) => item !== name) : [...current, name]); }
+  function save() { onSave(selected.map((name) => ({ id: `MEM-DEMO-${name}`, title: name, status: "진행중" as WorkspaceItemStatus, meta: groups.find((group) => group.people.includes(name))?.team ?? "", owner: name, updatedAt: "방금", description: `${name} 참여자 정보는 브라우저 세션 목업으로만 추가됩니다.`, related: "프로젝트 참여" }))); }
+  return <div className="fixed inset-0 z-50 flex justify-end"><button type="button" className="absolute inset-0 bg-black/30" aria-label="인원 추가 닫기" onClick={onClose}/><aside role="dialog" aria-modal="true" aria-label="인원 추가" className="relative flex h-full w-full max-w-md flex-col bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-line px-6 py-5"><div><h2 className="text-lg font-bold text-[#211A35]">인원 추가</h2><p className="mt-1 text-sm text-muted">프로젝트 참여자를 선택하세요.</p></div><button type="button" onClick={onClose} className="rounded-lg p-2 hover:bg-lavender" aria-label="닫기"><X size={20}/></button></div><div className="flex-1 space-y-6 overflow-y-auto p-6">{groups.map((group) => <section key={group.team}><h3 className="mb-2 text-sm font-bold text-violet">{group.team}</h3><div className="space-y-2">{group.people.map((name) => <label key={name} className="flex cursor-pointer items-center justify-between rounded-xl border border-line px-4 py-3 hover:bg-[#FAF8FF]"><span className="font-medium text-[#4D405F]">{name}</span><input type="checkbox" checked={selected.includes(name)} onChange={() => toggle(name)} className="h-4 w-4 accent-violet"/></label>)}</div></section>)}</div><div className="border-t border-line p-5"><button type="button" disabled={selected.length === 0} onClick={save} className="primary w-full px-3 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-40">{selected.length}{"명 추가"}</button></div></aside></div>;
+}
 function Overview({
   project,
   onRequirements,
@@ -218,8 +244,8 @@ function WorkspaceList({
   onQuery,
   onStatus,
   onSelect,
-  onExcelImport,
-  onDocumentCreate,
+  onMemberAdd,
+  onMemberRemove,
 }: {
   tab: Exclude<WorkspaceKind, "overview">;
   items: WorkspaceItem[];
@@ -228,8 +254,8 @@ function WorkspaceList({
   onQuery: (value: string) => void;
   onStatus: (value: string) => void;
   onSelect: (item: WorkspaceItem) => void;
-  onExcelImport: () => void;
-  onDocumentCreate: () => void;
+  onMemberAdd: () => void;
+  onMemberRemove: (memberId: string) => void;
 }) {
   const labels: Record<Exclude<WorkspaceKind, "overview">, string> = {
     documents: "기획 문서",
@@ -241,7 +267,7 @@ function WorkspaceList({
     documents: ["문서명", "상태", "버전 · 요구사항", "최종 수정일"],
     requirements: ["번호", "요구사항", "상태", "우선순위 · 영역", "담당자", "최종 수정일"],
     defects: ["번호", "결함 제목", "상태", "우선순위 · 환경", "담당자", "최종 수정일"],
-    members: ["이름", "역할", "참여 상태", "최근 수정일"],
+    members: ["이름", "역할", "참여 상태", "최근 수정일", "관리"],
   };
   return (
     <section className="min-w-0">
@@ -250,7 +276,7 @@ function WorkspaceList({
           <h2 className="text-lg font-bold">{labels[tab]}</h2>
           <p className="mt-1 text-sm text-muted">항목을 선택하면 상세 내용을 열 수 있습니다.</p>
         </div>
-        <button type="button" onClick={tab === "requirements" ? onExcelImport : tab === "documents" ? onDocumentCreate : undefined} className="primary px-4 py-2.5 text-sm">{tab === "requirements" ? "\uC5D1\uC140\uB85C \uB4F1\uB85D\uD558\uAE30" : "\uD56D\uBAA9 \uCD94\uAC00"}</button>
+        {tab === "members" && <button type="button" onClick={onMemberAdd} className="primary px-4 py-2.5 text-sm">인원 추가</button>}
       </div>
       <div className="mb-4 flex flex-col gap-2 sm:flex-row">
         <label className="flex h-10 flex-1 items-center gap-2 rounded-lg border border-line bg-white px-3">
@@ -296,7 +322,7 @@ function WorkspaceList({
                 </td>
               </tr>
             ) : (
-              items.map((item) => <WorkspaceTableRow key={item.id} tab={tab} item={item} onSelect={onSelect} />)
+              items.map((item) => <WorkspaceTableRow key={item.id} tab={tab} item={item} onSelect={onSelect} onMemberRemove={tab === "members" ? onMemberRemove : undefined} />)
             )}
           </tbody>
         </table>
@@ -309,10 +335,12 @@ function WorkspaceTableRow({
   tab,
   item,
   onSelect,
+  onMemberRemove,
 }: {
   tab: Exclude<WorkspaceKind, "overview">;
   item: WorkspaceItem;
   onSelect: (item: WorkspaceItem) => void;
+  onMemberRemove?: (memberId: string) => void;
 }) {
   const rowClass = "cursor-pointer border-t border-line hover:bg-[#FBF9FF]";
   if (tab === "documents")
@@ -330,13 +358,14 @@ function WorkspaceTableRow({
     );
   if (tab === "members")
     return (
-      <tr onClick={() => onSelect(item)} className={rowClass}>
+      <tr className={rowClass}>
         <td className="px-4 py-4 font-semibold text-violet">{item.title}</td>
         <td className="px-4 py-4">{item.meta}</td>
         <td className="px-4 py-4">
           <span className={`tag ${statusStyle[item.status]}`}>{item.status}</span>
         </td>
         <td className="px-4 py-4 text-muted">{item.updatedAt}</td>
+        <td className="px-4 py-4"><button type="button" onClick={() => onMemberRemove?.(item.id)} className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-[#625775] hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500">제외</button></td>
       </tr>
     );
   return (

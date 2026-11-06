@@ -8,6 +8,7 @@ import { WorkspaceShell } from "../../components/WorkspaceShell";
 import { VersionHistoryDrawer } from "../../components/VersionHistoryDrawer";
 import { RichTextEditor } from "../../components/RichTextEditor";
 import { FileAttachmentField } from "../../components/FileAttachmentField";
+import { ExcelRequirementImport } from "../../components/ExcelRequirementImport";
 import { getMockProjects } from "../../lib/projects";
 import {
   createMockDocument,
@@ -27,10 +28,10 @@ const input =
   "w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-[#4D405F] outline-none placeholder:text-[#978BAA] focus:border-violet";
 const statusClass = "rounded-full bg-lavender px-2.5 py-1 text-xs font-semibold text-violet";
 
-type DocDraft = Pick<PlanningDocument, "projectId" | "documentTitle" | "documentContent" | "documentStatus" | "service" | "environments" | "attachmentCount" | "attachments">;
+type DocDraft = Pick<PlanningDocument, "projectId" | "documentTitle" | "documentContent" | "documentStatus" | "service" | "environments" | "attachmentCount" | "attachments" | "referenceUrl">;
 type ReqDraft = Pick<
   PlanningRequirement,
-  "documentId" | "requirementTitle" | "requestType" | "priority" | "requirementStatus" | "assignee" | "requirementContent"
+  "documentId" | "requirementTitle" | "requestType" | "priority" | "requirementStatus" | "assignee" | "requirementContent" | "referenceUrl" | "attachments" | "attachmentFiles"
 >;
 
 export default function PlanningPage() {
@@ -55,6 +56,7 @@ function PlanningContent() {
   const [notice, setNotice] = useState("");
   const [docDrawer, setDocDrawer] = useState<PlanningDocument | "new" | null>(() => params.get("create") === "document" ? "new" : null);
   const [reqDrawer, setReqDrawer] = useState<PlanningRequirement | "new" | null>(null);
+  const [excelImportOpen, setExcelImportOpen] = useState(false);
   const [versionTitle, setVersionTitle] = useState<string | null>(null);
   const [documentPanel, setDocumentPanel] = useState<"content" | "attachments" | null>(null);
   const serviceType = params.get("serviceType") as "ADMIN" | "USER" | null;
@@ -168,7 +170,7 @@ function PlanningContent() {
       <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col p-4 md:px-6 md:py-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-white px-4 py-3">
           <div className="flex min-w-0 items-center gap-2"><button type="button" onClick={() => router.push("/planning")} className="shrink-0 text-sm font-bold text-violet">{"기획 및 요구사항"}</button><span className="text-muted">/</span><span className="text-sm font-bold text-[#211A35]">{serviceType}</span></div>
-          <div className="flex flex-wrap items-center gap-2"><span className="text-[11px] font-bold tracking-[.12em] text-[#625775]">ENV</span>{(serviceType === "USER" ? ["DEV", "STAGING", "LIVE"] : ["DEV", "LIVE"]).map((item) => <button type="button" key={item} onClick={() => setEnvironment(item)} className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors ${environment === item ? "border-violet bg-violet text-white" : "border-[#CDBAEF] bg-white text-[#625775] hover:border-violet hover:bg-lavender"}`}>{item}</button>)}</div>
+          <div className="flex flex-wrap items-center gap-2"><span className="text-[11px] font-bold tracking-[.12em] text-[#625775]">ENV</span>{(serviceType === "USER" ? ["DEV", "STAGING", "LIVE"] : ["DEV", "LIVE"]).map((item) => <button type="button" key={item} onClick={() => setEnvironment(item)} className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors ${environment === item ? "border-violet bg-violet text-white" : "border-[#CDBAEF] bg-white text-[#625775] hover:border-violet hover:bg-lavender"}`}>{item}</button>)}<button type="button" onClick={() => setExcelImportOpen(true)} className="rounded-lg border border-[#CDBAEF] bg-white px-3 py-1.5 text-xs font-bold text-violet hover:bg-lavender">엑셀로 등록하기</button></div>
         </div>
         {notice && (
           <div className="mb-4 flex items-center justify-between rounded-lg border border-[#E2D7F6] bg-lavender px-4 py-3 text-sm text-[#4C237F]">
@@ -394,6 +396,7 @@ function PlanningContent() {
       </main>
       {versionTitle && <VersionHistoryDrawer title={versionTitle} onClose={() => setVersionTitle(null)} />}
       {documentPanel && selected && <DocumentPreviewDrawer document={selected} view={documentPanel} onClose={() => setDocumentPanel(null)} />}
+      {excelImportOpen && <ExcelRequirementImport onClose={() => setExcelImportOpen(false)} />}
       {docDrawer && (
         <DocumentDrawer
           document={docDrawer === "new" ? null : docDrawer}
@@ -426,7 +429,7 @@ function ServiceSelection({ onSelect }: { onSelect: (service: "ADMIN" | "USER") 
 }
 function DocumentPreviewDrawer({ document, view, onClose }: { document: PlanningDocument; view: "content" | "attachments"; onClose: () => void }) {
   const title = view === "content" ? "\uAE30\uD68D \uB0B4\uC6A9" : "\uCCA8\uBD80\uD30C\uC77C";
-  return <Drawer title={title} onClose={onClose}><div className="space-y-3">{view === "content" ? <div className="min-h-64 whitespace-pre-wrap rounded-xl border border-line bg-[#FAF8FF] p-4 text-sm leading-7 text-[#4D405F]">{document.documentContent || "\uB4F1\uB85D\uB41C \uAE30\uD68D \uB0B4\uC6A9\uC774 \uC5C6\uC2B5\uB2C8\uB2E4."}</div> : (document.attachments?.length ? <ul className="space-y-2">{document.attachments.map((file) => <li key={file.name} className="rounded-xl border border-line bg-[#FAF8FF] px-3 py-3 text-sm text-[#4D405F]"><FileText size={15} className="mr-2 inline text-violet" />{file.name}<span className="ml-2 text-xs text-muted">{(file.size / 1024).toFixed(1)} KB</span></li>)}</ul> : <p className="py-16 text-center text-sm text-[#978BAA]">{"\uCCA8\uBD80\uD30C\uC77C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4."}</p>)}</div></Drawer>;
+  return <Drawer title={title} onClose={onClose}><div className="space-y-3">{view === "content" ? <><div className="min-h-64 whitespace-pre-wrap rounded-xl border border-line bg-[#FAF8FF] p-4 text-sm leading-7 text-[#4D405F]">{document.documentContent || "\uB4F1\uB85D\uB41C \uAE30\uD68D \uB0B4\uC6A9\uC774 \uC5C6\uC2B5\uB2C8\uB2E4."}</div>{document.referenceUrl && <a href={document.referenceUrl} target="_blank" rel="noreferrer" className="inline-flex text-sm font-semibold text-violet hover:underline">참고 URL 열기</a>}</> : (document.attachments?.length ? <ul className="space-y-2">{document.attachments.map((file) => <li key={file.name} className="rounded-xl border border-line bg-[#FAF8FF] px-3 py-3 text-sm text-[#4D405F]"><FileText size={15} className="mr-2 inline text-violet" />{file.name}<span className="ml-2 text-xs text-muted">{(file.size / 1024).toFixed(1)} KB</span></li>)}</ul> : <p className="py-16 text-center text-sm text-[#978BAA]">{"\uCCA8\uBD80\uD30C\uC77C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4."}</p>)}</div></Drawer>;
 }
 function Drawer({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -469,6 +472,7 @@ function DocumentDrawer({
     environments: document?.environments ?? [environment],
     attachmentCount: document?.attachmentCount ?? 0,
     attachments: document?.attachments ?? [],
+    referenceUrl: document?.referenceUrl ?? "",
   });
   return (
     <Drawer title={document ? "기획문서 수정" : "기획문서 등록"} onClose={onClose}>
@@ -485,6 +489,7 @@ function DocumentDrawer({
         <div className="rounded-lg bg-[#FAF8FF] px-3 py-2 text-xs text-muted">{"현재 서비스 · "}{service}{" · "}{environment}{" · 등록 후 문서별 환경을 추가할 수 있습니다."}</div>
         <Field label={"문서 내용"}><textarea value={v.documentContent} onChange={(e) => setV({ ...v, documentContent: e.target.value })} className={input + " min-h-32"} /></Field>
         <FileAttachmentField onFilesChange={(attachments) => setV({ ...v, attachments, attachmentCount: attachments.length })} />
+        <Field label={"참고 URL"}><input type="url" value={v.referenceUrl ?? ""} onChange={(e) => setV({ ...v, referenceUrl: e.target.value })} className={input} placeholder="https://figma.com/... 또는 문서 링크" /></Field>
         <div className="flex justify-end gap-2 pt-3">
           <button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm">
             취소
@@ -504,6 +509,9 @@ function RequirementDrawer({ requirement, parentDocument, onClose, onSave }: { r
     requirementStatus: requirement?.requirementStatus ?? "NEW",
     assignee: requirement?.assignee ?? "",
     requirementContent: requirement?.requirementContent ?? "",
+    referenceUrl: requirement?.referenceUrl ?? "",
+    attachments: requirement?.attachments ?? [],
+    attachmentFiles: requirement?.attachmentFiles ?? [],
   });
   return <Drawer title={requirement ? "요구사항 수정" : "요구사항 등록"} onClose={onClose}><form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (v.requirementTitle.trim()) onSave(v); }}>
     <div className="rounded-lg border border-line bg-[#FAF8FF] px-3 py-2 text-xs text-muted">{"상위 기획문서 설정 상속 · "}{parentDocument.service ?? "ADMIN"}{" · "}{(parentDocument.environments ?? ["DEV"]).join(" / ")}{" · 별도 환경 변경은 API 연동 후 제공됩니다."}</div>
@@ -512,6 +520,8 @@ function RequirementDrawer({ requirement, parentDocument, onClose, onSave }: { r
     <Field label={"진행상태"}><select value={v.requirementStatus} onChange={(event) => setV({ ...v, requirementStatus: event.target.value as RequirementProgressStatus })} className={input}>{Object.entries(requirementStatusLabel).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>
     <Field label={"담당자"}><input value={v.assignee} onChange={(event) => setV({ ...v, assignee: event.target.value })} className={input} /></Field>
     <RichTextEditor label={"상세 요구사항"} value={v.requirementContent} onChange={(requirementContent) => setV({ ...v, requirementContent })} />
+    <Field label={"참고 URL"}><input type="url" value={v.referenceUrl ?? ""} onChange={(event) => setV({ ...v, referenceUrl: event.target.value })} className={input} placeholder="https://figma.com/... 또는 관련 문서 링크" /></Field>
+    <FileAttachmentField label={"첨부파일"} initialFiles={v.attachmentFiles} onFilesChange={(attachments) => setV({ ...v, attachments })} onRawFilesChange={(attachmentFiles) => setV({ ...v, attachmentFiles })} />
     <div className="flex justify-end gap-2 pt-3"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm">취소</button><button className="rounded-lg bg-violet px-4 py-2 text-sm font-semibold text-white">저장</button></div>
   </form></Drawer>;
 }

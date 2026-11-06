@@ -1,7 +1,8 @@
 "use client";
 
 import { ArrowLeft, MessageSquare, Paperclip, Plus, Search, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FileAttachmentField, type LocalAttachment } from "../../components/FileAttachmentField";
 import { RichTextEditor, sanitizeRichTextHtml } from "../../components/RichTextEditor";
 import { WorkspaceShell } from "../../components/WorkspaceShell";
@@ -25,30 +26,57 @@ const input =
 const badge = "rounded-full bg-lavender px-2 py-1 text-xs font-semibold text-violet";
 
 export default function DefectsPage() {
+  return (
+    <Suspense fallback={null}>
+      <DefectsContent />
+    </Suspense>
+  );
+}
+
+function DefectsContent() {
+  const router = useRouter();
+  const params = useSearchParams();
   const projects = getMockProjects();
   const [issues, setIssues] = useState(mockDefectIssues);
   const [projectId, setProjectId] = useState("PRJ-1001");
-  const [registerId, setRegisterId] = useState("REG-1001");
   const [query, setQuery] = useState("");
   const [type, setType] = useState<IssueType | "ALL">("ALL");
   const [status, setStatus] = useState<IssueStatus | "ALL">("ALL");
+  const [documentId, setDocumentId] = useState("ALL");
   const [page, setPage] = useState(1);
   const [drawer, setDrawer] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const selectedId = params.get("issueId");
+  const serviceType = params.get("serviceType") as "ADMIN" | "USER" | null;
+  const [environment, setEnvironment] = useState(params.get("environment") ?? "DEV");
   const selected = issues.find((item) => item.id === selectedId);
-  const registers = defectRegisters.filter((item) => item.projectId === projectId);
+  const planningDocuments = getMockPlanningDocuments().filter(
+    (document) =>
+      document.projectId === projectId &&
+      (document.service ?? "ADMIN") === serviceType &&
+      (document.environments ?? ["DEV"]).includes(environment as "DEV" | "STAGING" | "LIVE"),
+  );
+  const registerIdsForService = new Set(
+    mockDefectIssues
+      .filter((issue) => issue.environment?.toUpperCase().includes(serviceType ?? ""))
+      .map((issue) => issue.registerId),
+  );
+  const registers = defectRegisters.filter((item) => item.projectId === projectId && registerIdsForService.has(item.id));
+  const activeRegisterId = registers[0]?.id ?? "";
+  const activeDocumentId = planningDocuments.some((document) => document.documentId === documentId) ? documentId : "ALL";
   const filtered = useMemo(
     () =>
       issues.filter(
         (item) =>
           item.projectId === projectId &&
-          item.registerId === registerId &&
+          item.environment?.toUpperCase().includes(serviceType ?? "") &&
+          item.environment?.toUpperCase().includes(environment) &&
+          (activeDocumentId === "ALL" || getMockPlanningRequirements().some((requirement) => requirement.requirementId === item.requirementId && requirement.documentId === activeDocumentId)) &&
           item.title.toLowerCase().includes(query.toLowerCase()) &&
           (type === "ALL" || item.type === type) &&
           (status === "ALL" || item.status === status),
       ),
-    [issues, projectId, registerId, query, type, status],
+    [issues, projectId, serviceType, environment, activeDocumentId, query, type, status],
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const visible = filtered.slice((page - 1) * pageSize, page * pageSize);
@@ -62,6 +90,7 @@ export default function DefectsPage() {
     update();
     setPage(1);
   }
+  if (!serviceType) return <DefectServiceSelection onSelect={(service) => router.push(`/defects?serviceType=${service}`)} />;
   function addIssue(
     draft: Omit<DefectIssue, "id" | "author" | "createdAt" | "updatedAt" | "comments" | "history" | "projectTitle">,
   ) {
@@ -87,7 +116,7 @@ export default function DefectsPage() {
     return (
       <IssueDetail
         issue={selected}
-        onBack={() => setSelectedId(null)}
+        onBack={() => router.push(`/defects?serviceType=${serviceType}`)}
         onUpdate={(next) => setIssues((items) => items.map((item) => (item.id === next.id ? next : item)))}
       />
     );
@@ -96,6 +125,10 @@ export default function DefectsPage() {
     <WorkspaceShell pageTitle={"결함 관리"}>
       <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
         <div className="mx-auto max-w-[1500px]">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#211A35] px-5 py-4 shadow-lg">
+            <div><p className="text-[11px] font-bold tracking-[.16em] text-[#D7C7FF]">INCIDENT CONTROL</p><div className="mt-1 flex items-center gap-2"><button type="button" onClick={() => router.push("/defects")} className="text-lg font-bold text-white">결함 관리</button><span className="text-[#978BAA]">/</span><span className="text-sm font-bold text-[#E7DFFF]">{serviceType}</span></div></div>
+            <div className="flex flex-wrap items-center gap-2"><span className="mr-1 text-[11px] font-bold tracking-[.12em] text-[#BFB1D6]">ENVIRONMENT</span>{(serviceType === "USER" ? ["DEV", "STAGING", "LIVE"] : ["DEV", "LIVE"]).map((item) => <button type="button" key={item} onClick={() => setEnvironment(item)} className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors ${environment === item ? "border-white bg-white text-[#211A35]" : "border-[#625775] bg-transparent text-[#E7DFFF] hover:border-[#D7C7FF] hover:bg-[#352B4C]"}`}>{item}</button>)}</div>
+          </div>
           <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-sm text-muted">{"개발 후 발견된 오류와 개선 요청을 관리합니다."}</p>
@@ -104,7 +137,7 @@ export default function DefectsPage() {
             <button
               type="button"
               onClick={() => setDrawer(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-violet px-4 py-2.5 text-sm font-semibold text-white"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#D94B62] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#BF3B51]"
             >
               <Plus size={16} />
               {"이슈 등록"}
@@ -119,23 +152,23 @@ export default function DefectsPage() {
             </div>
           )}
           <section className="overflow-hidden rounded-2xl border border-line bg-white">
-            <div className="border-b border-line bg-gradient-to-r from-[#FCFAFF] to-white px-5 py-5 md:px-6">
+            <div className="border-b border-line bg-gradient-to-r from-[#FFF8F9] via-[#FCFAFF] to-white px-5 py-5 md:px-6">
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
-                  <p className="text-xs font-bold tracking-[.14em] text-violet">ISSUE WORKSPACE</p>
+                  <p className="text-xs font-bold tracking-[.14em] text-[#C83E55]">ISSUE TRIAGE QUEUE</p>
                   <h2 className="mt-1 text-lg font-bold text-[#211A35]">{"결함 이슈 작업 목록"}</h2>
                   <p className="mt-1 text-sm text-muted">{"우선순위와 진행 상태를 한눈에 확인하세요."}</p>
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs font-semibold">
-                  <span className="rounded-lg bg-lavender px-2.5 py-2 text-violet">
+                  <span className="rounded-lg bg-[#FFF0F2] px-2.5 py-2 text-[#C83E55]">
                     {"접수 "}
                     {statusCounts.OPEN}
                   </span>
-                  <span className="rounded-lg bg-[#F1ECFF] px-2.5 py-2 text-violet">
+                  <span className="rounded-lg bg-[#FFF5E8] px-2.5 py-2 text-[#9A5C10]">
                     {"진행 중 "}
                     {statusCounts.IN_PROGRESS}
                   </span>
-                  <span className="rounded-lg bg-[#F4F1F7] px-2.5 py-2 text-[#625775]">
+                  <span className="rounded-lg bg-[#EAF8F0] px-2.5 py-2 text-[#287D61]">
                     {"조치 완료 "}
                     {statusCounts.RESOLVED}
                   </span>
@@ -147,7 +180,7 @@ export default function DefectsPage() {
                   onChange={(event) =>
                     updateFilters(() => {
                       setProjectId(event.target.value);
-                      setRegisterId(defectRegisters.find((item) => item.projectId === event.target.value)?.id ?? "");
+                      setDocumentId("ALL");
                     })
                   }
                   className={input}
@@ -158,16 +191,9 @@ export default function DefectsPage() {
                     </option>
                   ))}
                 </select>
-                <select
-                  value={registerId}
-                  onChange={(event) => updateFilters(() => setRegisterId(event.target.value))}
-                  className={input}
-                >
-                  {registers.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.title}
-                    </option>
-                  ))}
+                <select value={activeDocumentId} onChange={(event) => updateFilters(() => setDocumentId(event.target.value))} className={input}>
+                  <option value="ALL">기획문서 전체</option>
+                  {planningDocuments.map((document) => <option key={document.documentId} value={document.documentId}>{document.documentTitle}</option>)}
                 </select>
                 <label className="relative">
                   <Search size={16} className="absolute left-3 top-2.5 text-[#978BAA]" />
@@ -209,7 +235,7 @@ export default function DefectsPage() {
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => setSelectedId(item.id)}
+                  onClick={() => router.push(`/defects?serviceType=${serviceType}&issueId=${item.id}`)}
                   className="group grid w-full grid-cols-[4px_minmax(0,1fr)] text-left transition hover:bg-[#FCFAFF] md:grid-cols-[4px_104px_minmax(0,1fr)_104px_100px_150px]"
                 >
                   <span
@@ -263,8 +289,33 @@ export default function DefectsPage() {
         </div>
       </main>
       {drawer && (
-        <IssueDrawer projectId={projectId} registerId={registerId} onClose={() => setDrawer(false)} onSave={addIssue} />
+        <IssueDrawer projectId={projectId} registerId={activeRegisterId} onClose={() => setDrawer(false)} onSave={addIssue} />
       )}
+    </WorkspaceShell>
+  );
+}
+
+function DefectServiceSelection({ onSelect }: { onSelect: (service: "ADMIN" | "USER") => void }) {
+  const cards = [
+    { service: "ADMIN" as const, title: "ADMIN", label: "운영 콘솔", description: "관리자 기능과 운영 도구의 결함을 확인합니다.", environments: ["DEV", "LIVE"] },
+    { service: "USER" as const, title: "USER", label: "사용자 앱", description: "사용자 서비스와 앱 경험의 결함을 확인합니다.", environments: ["DEV", "STAGING", "LIVE"] },
+  ];
+  return (
+    <WorkspaceShell pageTitle="결함 관리">
+      <main className="min-h-0 flex-1 overflow-y-auto bg-[#F8F7FB] p-5 md:p-8">
+        <section className="mx-auto max-w-5xl">
+          <div className="overflow-hidden rounded-3xl bg-[#211A35] px-7 py-8 text-white shadow-xl md:px-10 md:py-10">
+            <p className="text-xs font-bold tracking-[.18em] text-[#D7C7FF]">ISSUE TRIAGE</p>
+            <div className="mt-5 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+              <div><h1 className="text-3xl font-bold tracking-tight md:text-4xl">어느 채널의 이슈를<br />확인할까요?</h1><p className="mt-4 max-w-xl text-sm leading-6 text-[#CFC4DF]">서비스를 선택하면 해당 채널의 환경, 기획문서, 결함 이슈를 한 번에 확인할 수 있습니다.</p></div>
+              <span className="w-fit rounded-full border border-[#625775] bg-[#312742] px-3 py-1.5 text-xs font-bold text-[#E7DFFF]">실시간 트리아지</span>
+            </div>
+          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            {cards.map((card) => <button type="button" key={card.service} onClick={() => onSelect(card.service)} className={`group rounded-2xl border p-6 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg ${card.service === "ADMIN" ? "border-[#E7D5D9] bg-[#FFF9FA] hover:border-[#D94B62]" : "border-[#D8E4F5] bg-[#F8FBFF] hover:border-[#3B78C2]"}`}><div className="flex items-start justify-between"><span className={`flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-black ${card.service === "ADMIN" ? "bg-[#FFE7EB] text-[#C83E55]" : "bg-[#E4F0FF] text-[#2C67AE]"}`}>{card.title.slice(0, 1)}</span><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${card.service === "ADMIN" ? "bg-[#FDEFF1] text-[#C83E55]" : "bg-[#EAF3FF] text-[#2C67AE]"}`}>{card.label}</span></div><p className={`mt-8 text-xs font-bold tracking-[.16em] ${card.service === "ADMIN" ? "text-[#C83E55]" : "text-[#2C67AE]"}`}>{card.title}</p><h2 className="mt-2 text-2xl font-bold text-[#211A35]">{card.label}</h2><p className="mt-3 text-sm leading-6 text-[#625775]">{card.description}</p><div className="mt-6 flex items-center justify-between border-t border-current/10 pt-4"><div className="flex gap-1.5">{card.environments.map((environment) => <span key={environment} className="rounded bg-white px-2 py-1 text-[11px] font-bold text-[#625775]">{environment}</span>)}</div><span className="text-sm font-bold text-[#4D405F] group-hover:text-violet">이슈 보기 →</span></div></button>)}
+          </div>
+        </section>
+      </main>
     </WorkspaceShell>
   );
 }
