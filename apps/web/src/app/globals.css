@@ -1,6 +1,14 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@font-face {
+  font-family: "Carehe Sans";
+  src: url("/fonts/NotoSansKR-VF.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
 :root {
   color-scheme: light;
 }
@@ -11,7 +19,8 @@ body {
   margin: 0;
   background: #f7f5ff;
   color: #211a35;
-  font-family: Pretendard, Arial, sans-serif;
+  font-family: "Carehe Sans", "Segoe UI", "Malgun Gothic", Arial, sans-serif;
+  letter-spacing: -0.015em;
 }
 button,
 input {

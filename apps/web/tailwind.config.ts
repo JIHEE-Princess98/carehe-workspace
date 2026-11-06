@@ -3,7 +3,9 @@ export default {
   content: ["./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
-      fontFamily: { sans: ["Pretendard", "Arial", "sans-serif"] },
+      fontFamily: {
+        sans: ["\"Carehe Sans\"", "\"Segoe UI\"", "\"Malgun Gothic\"", "Arial", "sans-serif"],
+      },
       colors: {
         canvas: "#F7F5FF",
         ink: "#211A35",
