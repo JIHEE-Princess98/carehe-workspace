@@ -14,8 +14,9 @@ export interface PlanningDocument {
   service?: "ADMIN" | "USER";
   environments?: ("DEV" | "STAGING" | "LIVE")[];
   attachmentCount?: number;
-  attachments?: { name: string; size: number }[];
+  attachments?: { attachmentId?: number; name: string; size: number; mimeType?: string | null }[];
   referenceUrl?: string;
+  referenceUrls?: string[];
 }
 export interface PlanningRequirement {
   requirementId: string;
@@ -25,9 +26,11 @@ export interface PlanningRequirement {
   requestType: RequirementType;
   priority: "LOW" | "NORMAL" | "HIGH";
   requirementStatus: RequirementProgressStatus;
+  assigneeId?: number | null;
   assignee: string;
   requirementContent: string;
   referenceUrl?: string;
+  referenceUrls?: string[];
   attachments?: { name: string; size: number }[];
   attachmentFiles?: File[];
   createdAt: string;

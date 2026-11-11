@@ -4,11 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ChevronRight, ExternalLink, History, Search, X } from "lucide-react";
-import type { ProjectStatus } from "@carehe/shared-types";
+import type { ProjectStatus, ProjectSummary } from "@carehe/shared-types";
 import {
   getMockStatusHistory,
-  getMockProject,
-  getWorkspaceItems,
   projectStatusLabel,
   type WorkspaceItem,
   type WorkspaceItemStatus,
@@ -16,7 +14,10 @@ import {
 } from "../../../lib/projects";
 import { WorkspaceShell } from "../../../components/WorkspaceShell";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
+import { fetchAvailableProjectMembers, fetchProject, fetchProjectDocuments, fetchProjectMembers, inviteProjectMember } from "../../../lib/project-api";
 import { issuePriorityLabel, issueStatusLabel, mockDefectIssues } from "../../../lib/defects";
+
+const emptyWorkspaceItems = (): WorkspaceItem[] => [];
 
 const tabs: { id: WorkspaceKind; label: string }[] = [
   { id: "overview", label: "개요" },
@@ -42,13 +43,14 @@ export default function ProjectDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const projectId = Array.isArray(params.id) ? params.id[0] : params.id;
-  const project = getMockProject(projectId);
+  const [project, setProject] = useState<ProjectSummary | null>(null);
   const [tab, setTab] = useState<WorkspaceKind>("overview");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
   const [selected, setSelected] = useState<WorkspaceItem | null>(null);
   const [memberDrawer, setMemberDrawer] = useState(false);
-  const [members, setMembers] = useState<WorkspaceItem[]>(() => getWorkspaceItems("members"));
+  const [members, setMembers] = useState<WorkspaceItem[]>([]);
+  const [documents, setDocuments] = useState<WorkspaceItem[]>([]);
   const [memberToRemove, setMemberToRemove] = useState<WorkspaceItem | null>(null);
 
   useEffect(() => {
@@ -56,6 +58,19 @@ export default function ProjectDetailPage() {
     setQuery("");
     setStatus("ALL");
   }, [projectId, tab]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    void Promise.all([fetchProject(projectId), fetchProjectMembers(projectId)]).then(([nextProject, nextMembers]) => {
+      setProject(nextProject);
+      setMembers(nextMembers.map((member) => ({ id: String(member.userId), title: member.userName, status: member.invitationStatusName as WorkspaceItemStatus, meta: member.memberRoleName, owner: member.userName, updatedAt: new Date(member.createdAt).toLocaleDateString("ko-KR"), description: member.teamName ?? "", related: member.invitationStatusName })));
+    }).catch(() => { setProject(null); setMembers([]); });
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    void fetchProjectDocuments(projectId).then((items) => setDocuments(items.map((item) => ({ id: item.documentNo || String(item.documentId), title: item.documentTitle, status: item.documentStatusName as WorkspaceItemStatus, meta: `요구사항 ${item.requirementCount}건`, owner: item.updatedBy, updatedAt: new Date(item.updatedAt).toLocaleDateString("ko-KR"), description: item.documentContent ?? "", related: item.documentNo })))).catch(() => setDocuments([]));
+  }, [projectId]);
 
   useEffect(() => {
     if (!selected) return;
@@ -70,8 +85,10 @@ export default function ProjectDetailPage() {
     () =>
       (tab === "members"
         ? members
-        : tab === "defects"
-          ? mockDefectIssues
+        : tab === "documents"
+          ? documents
+          : tab === "defects"
+          ? ([] as typeof mockDefectIssues)
               .filter((issue) => issue.projectId === projectId)
               .map((issue) => ({
                 id: issue.id,
@@ -83,10 +100,10 @@ export default function ProjectDetailPage() {
                 description: issue.content.replace(/<[^>]*>/g, ""),
                 related: issue.requirement ?? "연결된 요구사항 없음",
               }))
-          : getWorkspaceItems(tab)).filter(
+          : emptyWorkspaceItems()).filter(
         (item) => item.title.includes(query.trim()) && (status === "ALL" || item.status === status),
       ),
-    [members, query, status, tab],
+    [documents, members, query, status, tab],
   );
 
   if (!project) {
@@ -170,10 +187,20 @@ export default function ProjectDetailPage() {
         </main>
       </div>
       {selected && tab !== "overview" && <ItemDrawer kind={tab} item={selected} onClose={() => setSelected(null)} onViewDetail={() => { setSelected(null); if (tab === "defects") router.push(`/defects?serviceType=${selected.meta.includes("USER") ? "USER" : "ADMIN"}&issueId=${selected.id}`); else if (tab === "documents" || tab === "requirements") router.push(`/planning?serviceType=ADMIN&projectId=${projectId}`); }} />}
-      {memberDrawer && <MemberDrawer onClose={() => setMemberDrawer(false)} onSave={(nextMembers) => { setMembers((current) => [...current, ...nextMembers]); setMemberDrawer(false); }} />}
+      {memberDrawer && <ProjectMemberDrawer projectId={projectId} onClose={() => setMemberDrawer(false)} onSaved={async () => { const nextMembers = await fetchProjectMembers(projectId); setMembers(nextMembers.map((member) => ({ id: String(member.userId), title: member.userName, status: member.invitationStatusName as WorkspaceItemStatus, meta: member.memberRoleName, owner: member.userName, updatedAt: new Date(member.createdAt).toLocaleDateString("ko-KR"), description: member.teamName ?? "", related: member.invitationStatusName }))); setMemberDrawer(false); }} />}
       {memberToRemove && <ConfirmDialog title="참여자를 제외할까요?" description={`${memberToRemove.title}님은 이 프로젝트 참여자 목록에서 제외됩니다. 실제 권한 변경은 API 연동 후 처리됩니다.`} confirmLabel="제외하기" tone="danger" onClose={() => setMemberToRemove(null)} onConfirm={() => { setMembers((current) => current.filter((member) => member.id !== memberToRemove.id)); setMemberToRemove(null); }} />}
     </WorkspaceShell>
   );
+}
+
+function ProjectMemberDrawer({ projectId, onClose, onSaved }: { projectId: string; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [members, setMembers] = useState<Array<{ userId: number; userName: string; loginId: string; teamName: string | null }>>([]);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [error, setError] = useState("");
+  useEffect(() => { void fetchAvailableProjectMembers(projectId).then(setMembers).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "사용자 목록을 불러오지 못했습니다.")); }, [projectId]);
+  const groups = members.reduce<Record<string, typeof members>>((result, member) => { const team = member.teamName ?? "소속 없음"; (result[team] ??= []).push(member); return result; }, {});
+  async function save() { try { await Promise.all(selected.map((userId) => inviteProjectMember(projectId, userId))); await onSaved(); } catch (reason) { setError(reason instanceof Error ? reason.message : "참여자를 추가하지 못했습니다."); } }
+  return <div className="fixed inset-0 z-50 flex justify-end"><button type="button" className="absolute inset-0 bg-black/30" aria-label="인원 추가 닫기" onClick={onClose}/><aside role="dialog" aria-modal="true" aria-label="인원 추가" className="relative flex h-full w-full max-w-md flex-col bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-line px-6 py-5"><div><h2 className="text-lg font-bold text-[#211A35]">인원 추가</h2><p className="mt-1 text-sm text-muted">팀별 사용자 목록에서 참여자를 선택하세요.</p></div><button type="button" onClick={onClose} className="rounded-lg p-2 hover:bg-lavender"><X size={20}/></button></div><div className="flex-1 space-y-6 overflow-y-auto p-6">{error && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-600">{error}</p>}{Object.entries(groups).map(([team, people]) => <section key={team}><h3 className="mb-2 text-sm font-bold text-violet">{team}</h3><div className="space-y-2">{people.map((member) => <label key={member.userId} className="flex cursor-pointer items-center justify-between rounded-xl border border-line px-4 py-3 hover:bg-[#FAF8FF]"><span><span className="block font-medium text-[#4D405F]">{member.userName}</span><span className="text-xs text-muted">{member.loginId}</span></span><input type="checkbox" checked={selected.includes(member.userId)} onChange={() => setSelected((current) => current.includes(member.userId) ? current.filter((id) => id !== member.userId) : [...current, member.userId])} className="h-4 w-4 accent-violet"/></label>)}</div></section>)}{!members.length && !error && <p className="py-12 text-center text-sm text-muted">추가할 사용자가 없습니다.</p>}</div><div className="border-t border-line p-5"><button type="button" disabled={selected.length === 0} onClick={() => void save()} className="primary w-full px-3 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-40">{selected.length}명 추가</button></div></aside></div>;
 }
 
 function MemberDrawer({ onClose, onSave }: { onClose: () => void; onSave: (members: WorkspaceItem[]) => void }) {
@@ -183,11 +210,13 @@ function MemberDrawer({ onClose, onSave }: { onClose: () => void; onSave: (membe
   function save() { onSave(selected.map((name) => ({ id: `MEM-DEMO-${name}`, title: name, status: "진행중" as WorkspaceItemStatus, meta: groups.find((group) => group.people.includes(name))?.team ?? "", owner: name, updatedAt: "방금", description: `${name} 참여자 정보는 브라우저 세션 목업으로만 추가됩니다.`, related: "프로젝트 참여" }))); }
   return <div className="fixed inset-0 z-50 flex justify-end"><button type="button" className="absolute inset-0 bg-black/30" aria-label="인원 추가 닫기" onClick={onClose}/><aside role="dialog" aria-modal="true" aria-label="인원 추가" className="relative flex h-full w-full max-w-md flex-col bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-line px-6 py-5"><div><h2 className="text-lg font-bold text-[#211A35]">인원 추가</h2><p className="mt-1 text-sm text-muted">프로젝트 참여자를 선택하세요.</p></div><button type="button" onClick={onClose} className="rounded-lg p-2 hover:bg-lavender" aria-label="닫기"><X size={20}/></button></div><div className="flex-1 space-y-6 overflow-y-auto p-6">{groups.map((group) => <section key={group.team}><h3 className="mb-2 text-sm font-bold text-violet">{group.team}</h3><div className="space-y-2">{group.people.map((name) => <label key={name} className="flex cursor-pointer items-center justify-between rounded-xl border border-line px-4 py-3 hover:bg-[#FAF8FF]"><span className="font-medium text-[#4D405F]">{name}</span><input type="checkbox" checked={selected.includes(name)} onChange={() => toggle(name)} className="h-4 w-4 accent-violet"/></label>)}</div></section>)}</div><div className="border-t border-line p-5"><button type="button" disabled={selected.length === 0} onClick={save} className="primary w-full px-3 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-40">{selected.length}{"명 추가"}</button></div></aside></div>;
 }
+void MemberDrawer;
+
 function Overview({
   project,
   onRequirements,
 }: {
-  project: NonNullable<ReturnType<typeof getMockProject>>;
+  project: ProjectSummary;
   onRequirements: () => void;
 }) {
   return (
@@ -212,26 +241,15 @@ function Overview({
         <article className="surface rounded-xl p-5">
           <p className="text-sm text-muted">최근 수정일</p>
           <p className="mt-2 text-xl font-bold">{project.updatedAt}</p>
-          <p className="mt-4 text-sm text-muted">현재 데이터는 데모 목업입니다.</p>
+          <p className="mt-4 text-sm text-muted">프로젝트 정보의 마지막 수정 시각입니다.</p>
         </article>
       </section>
       <section className="border-t border-line pt-6">
         <h2 className="text-lg font-bold">최근 변경 사항</h2>
-        <div className="mt-4 divide-y divide-line border-y border-line">
-          <ChangeLine title="REQ-042 프로젝트 목록 상태 필터가 진행중으로 변경되었습니다." date="2026.11.02" />
-          <ChangeLine title="DOC-012 서비스 기획서 v1.4가 수정되었습니다." date="2026.11.01" />
-          <ChangeLine title="DEF-018 결함이 등록되었습니다." date="2026.10.31" />
+        <div className="mt-4 border-y border-line px-4 py-8 text-center text-sm text-muted">
+          아직 기록된 변경 사항이 없습니다.
         </div>
       </section>
-    </div>
-  );
-}
-
-function ChangeLine({ title, date }: { title: string; date: string }) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2 py-4 text-sm">
-      <span>{title}</span>
-      <span className="text-xs text-muted">{date}</span>
     </div>
   );
 }

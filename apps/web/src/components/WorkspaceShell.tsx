@@ -1,9 +1,10 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Bell,
+  BookOpen,
   Bug,
   ChevronDown,
   ChevronRight,
@@ -21,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { Brand } from "./Brand";
+import { NotebookPanel } from "./NotebookPanel";
 
 type WorkspaceShellProps = { pageTitle: string; children: ReactNode };
 
@@ -38,11 +40,12 @@ const notifications = [
 ];
 
 const adminNav: NavItem[] = [
-  { label: "공통코드 관리", icon: Settings },
-  { label: "권한 관리", icon: KeyRound },
-  { label: "사용자 관리", icon: Users },
-  { label: "메뉴 관리", icon: ClipboardList },
+  { label: "공통코드 관리", href: "/codes", icon: Settings },
+  { label: "권한 관리", href: "/permissions", icon: KeyRound },
+  { label: "사용자 관리", href: "/users", icon: Users },
 ];
+const menuPermission: Record<string, string> = { "/dashboard": "DASHBOARD_VIEW", "/projects": "PROJECT_VIEW", "/planning": "PLANNING_VIEW", "/defects": "DEFECT_VIEW", "/codes": "COMMON_CODE_VIEW", "/users": "USER_VIEW", "/permissions": "ROLE_VIEW" };
+const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8080";
 
 export function WorkspaceShell({ pageTitle, children }: WorkspaceShellProps) {
   const router = useRouter();
@@ -53,11 +56,26 @@ export function WorkspaceShell({ pageTitle, children }: WorkspaceShellProps) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [read, setRead] = useState(false);
+  const [notebookOpen, setNotebookOpen] = useState(false);
+  const [permissions, setPermissions] = useState<string[]>([]);
+  const [passwordChangeOpen, setPasswordChangeOpen] = useState(false);
 
   useEffect(() => {
     const savedUser = sessionStorage.getItem("issue-demo-user");
     if (!savedUser) router.replace("/login");
-    else setUser(savedUser);
+    else {
+      setUser(savedUser);
+      setPasswordChangeOpen(sessionStorage.getItem("issue-password-change-required") === "1");
+      setPermissions(JSON.parse(sessionStorage.getItem("issue-permissions") ?? "[]") as string[]);
+      const token = sessionStorage.getItem("issue-access-token");
+      if (token) void fetch(`${apiUrl}/auth/session`, { headers: { Authorization: `Bearer ${token}` } }).then(async (response) => {
+        if (!response.ok) return;
+        const { permissions: currentPermissions } = await response.json() as { permissions: string[] };
+        if (sessionStorage.getItem("issue-access-token") !== token) return;
+        sessionStorage.setItem("issue-permissions", JSON.stringify(currentPermissions));
+        setPermissions(currentPermissions);
+      }).catch(() => undefined);
+    }
     setDarkMode(localStorage.getItem("issue-theme") === "dark");
   }, [router]);
 
@@ -71,6 +89,9 @@ export function WorkspaceShell({ pageTitle, children }: WorkspaceShellProps) {
 
   function logout() {
     sessionStorage.removeItem("issue-demo-user");
+    sessionStorage.removeItem("issue-access-token");
+    sessionStorage.removeItem("issue-permissions");
+    sessionStorage.removeItem("issue-password-change-required");
     router.replace("/login");
   }
 
@@ -83,6 +104,7 @@ export function WorkspaceShell({ pageTitle, children }: WorkspaceShellProps) {
   }
 
   const navButton = (item: NavItem) => {
+    if (item.href && menuPermission[item.href] && !permissions.includes(menuPermission[item.href])) return null;
     const Icon = item.icon;
     const active = isActive(item);
     return (
@@ -152,6 +174,7 @@ export function WorkspaceShell({ pageTitle, children }: WorkspaceShellProps) {
             </div>
             <div className="flex items-center gap-4">
               <span className="hidden text-xs text-muted md:block">FRONTEND DEMO</span>
+              <button type="button" onClick={() => setNotebookOpen(true)} aria-label="Gemini Notebook 열기" className="rounded-lg p-2 text-[#5D5076] hover:bg-lavender"><BookOpen size={19} /></button>
               <div className="relative">
                 <button type="button" onClick={() => { setNotificationsOpen((open) => !open); setRead(true); }} aria-label={"알림"} aria-expanded={notificationsOpen} className="relative rounded-lg p-2 text-[#5D5076] hover:bg-lavender">
                   <Bell size={19} />{!read && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[#D9435F] ring-2 ring-white" />}
@@ -214,8 +237,16 @@ export function WorkspaceShell({ pageTitle, children }: WorkspaceShellProps) {
             </div>
           </header>
           {children}
+          <NotebookPanel open={notebookOpen} onClose={() => setNotebookOpen(false)} />
+          {passwordChangeOpen && <PasswordChangeDialog onComplete={() => { sessionStorage.setItem("issue-password-change-required", "0"); setPasswordChangeOpen(false); }} />}
         </main>
       </div>
     </div>
   );
+}
+
+function PasswordChangeDialog({ onComplete }: { onComplete: () => void }) {
+  const [password, setPassword] = useState(""); const [confirm, setConfirm] = useState(""); const [error, setError] = useState(""); const [saving, setSaving] = useState(false);
+  async function submit(event: FormEvent) { event.preventDefault(); if (password.length < 8) return setError("비밀번호는 8자 이상으로 설정해 주세요."); if (password !== confirm) return setError("비밀번호가 일치하지 않습니다."); setSaving(true); setError(""); const token = sessionStorage.getItem("issue-access-token"); const response = await fetch(`${apiUrl}/auth/password`, { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token ?? ""}` }, body: JSON.stringify({ password }) }); if (!response.ok) { setError("비밀번호를 변경하지 못했습니다."); setSaving(false); return; } onComplete(); }
+  return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4"><form onSubmit={submit} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"><h2 className="text-lg font-bold">비밀번호 변경</h2><p className="mt-2 text-sm text-muted">초기 비밀번호를 사용 중입니다. 계속하려면 새 비밀번호를 설정해 주세요.</p><label className="mt-6 block text-sm font-bold">새 비밀번호<input required minLength={8} type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="field mt-2" autoFocus /></label><label className="mt-4 block text-sm font-bold">새 비밀번호 확인<input required minLength={8} type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} className="field mt-2" /></label>{error && <p role="alert" className="mt-3 text-sm text-[#A12E41]">{error}</p>}<button disabled={saving} className="primary mt-6 w-full">{saving ? "변경 중" : "비밀번호 변경"}</button></form></div>;
 }

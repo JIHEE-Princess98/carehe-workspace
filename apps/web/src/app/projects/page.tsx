@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowUpDown, ChevronLeft, ChevronRight, FolderPlus, Plus, Search, X } from "lucide-react";
 import type { ProjectStatus, ProjectSummary } from "@carehe/shared-types";
-import { createMockProject, getMockProjects, projectStatusLabel } from "../../lib/projects";
+import { projectStatusLabel } from "../../lib/projects";
+import { createProject, fetchProjects } from "../../lib/project-api";
 import { WorkspaceShell } from "../../components/WorkspaceShell";
 
 const PAGE_SIZE = 4;
@@ -15,13 +16,23 @@ const statusStyle: Record<ProjectStatus, string> = {
 };
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<ProjectSummary[]>(getMockProjects);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"ALL" | ProjectStatus>("ALL");
   const [page, setPage] = useState(1);
   const [sortDesc, setSortDesc] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  async function loadProjects() {
+    setLoading(true);
+    try { setProjects(await fetchProjects()); }
+    catch (error) { setNotice(error instanceof Error ? error.message : "프로젝트를 불러오지 못했습니다."); }
+    finally { setLoading(false); }
+  }
+
+  useEffect(() => { void loadProjects(); }, []);
 
   const filtered = useMemo(() => {
     const result = projects.filter((project) => {
@@ -41,8 +52,9 @@ export default function ProjectsPage() {
     setPage(1);
   }
 
-  function addProject(input: { projectTitle: string; description: string; projectStatus: ProjectStatus }) {
-    setProjects((current) => [createMockProject(input), ...current]);
+  async function addProject(input: { projectTitle: string; description: string; projectStatus: ProjectStatus }) {
+    await createProject(input);
+    await loadProjects();
     setDrawerOpen(false);
     setNotice("데모 프로젝트를 목록에 추가했습니다. 실제 서버에는 저장되지 않습니다.");
     window.setTimeout(() => setNotice(""), 3500);
@@ -116,7 +128,7 @@ export default function ProjectsPage() {
 
         <section className="overflow-hidden rounded-2xl border border-[#E8E0F1] bg-white shadow-sm" aria-label="프로젝트 목록">
           <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
-            {visibleProjects.map((project) => <ProjectCard key={project.projectId} project={project} />)}
+            {loading ? <p className="col-span-full py-12 text-center text-muted">프로젝트를 불러오는 중입니다.</p> : visibleProjects.map((project) => <ProjectCard key={project.projectId} project={project} />)}
           </div>
           <div className="hidden overflow-x-auto">
             <table className="w-full min-w-[820px] text-left text-sm">
@@ -165,7 +177,7 @@ export default function ProjectsPage() {
               </tbody>
             </table>
           </div>
-          {projects.length === 0 ? (
+          {!loading && projects.length === 0 ? (
             <EmptyState
               title="등록된 프로젝트가 없습니다."
               description="새 프로젝트를 만들어 업무를 시작해 보세요."
