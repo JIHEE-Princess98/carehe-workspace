@@ -19,13 +19,27 @@ export default function Login() {
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
   const [leaving, setLeaving] = useState(false);
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!id.trim() || !password) {
       setError("아이디와 비밀번호를 입력해 주세요.");
       return;
     }
-    sessionStorage.setItem("issue-demo-user", id.trim());
+    setError("");
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8080"}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ loginId: id.trim(), password }),
+    });
+    if (!response.ok) {
+      setError("아이디 또는 비밀번호를 확인해 주세요.");
+      return;
+    }
+    const { accessToken, permissions, mustChangePassword, user } = (await response.json()) as { accessToken: string; permissions: string[]; mustChangePassword: boolean; user: { name: string } };
+    sessionStorage.setItem("issue-demo-user", user.name);
+    sessionStorage.setItem("issue-access-token", accessToken);
+    sessionStorage.setItem("issue-permissions", JSON.stringify(permissions));
+    sessionStorage.setItem("issue-password-change-required", mustChangePassword ? "1" : "0");
     setLeaving(true);
     window.setTimeout(() => router.push("/dashboard"), 240);
   }

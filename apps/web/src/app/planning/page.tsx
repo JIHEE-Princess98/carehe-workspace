@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { FileText, Paperclip, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { DocumentStatus, RequirementProgressStatus, RequirementType } from "@carehe/shared-types";
@@ -9,13 +9,12 @@ import { VersionHistoryDrawer } from "../../components/VersionHistoryDrawer";
 import { RichTextEditor } from "../../components/RichTextEditor";
 import { FileAttachmentField } from "../../components/FileAttachmentField";
 import { ExcelRequirementImport } from "../../components/ExcelRequirementImport";
-import { getMockProjects } from "../../lib/projects";
+import { fetchProjectMembers, fetchProjects } from "../../lib/project-api";
+import { downloadDocumentAttachment, listDocuments, listRequirements, removeDocument, saveDocument as persistDocument, saveRequirement as persistRequirement, uploadDocumentAttachments } from "../../lib/planning-api";
 import {
   createMockDocument,
   createMockRequirement,
   documentStatusLabel,
-  getMockPlanningDocuments,
-  getMockPlanningRequirements,
   priorityLabel,
   requirementStatusLabel,
   requirementTypeLabel,
@@ -28,10 +27,10 @@ const input =
   "w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-[#4D405F] outline-none placeholder:text-[#978BAA] focus:border-violet";
 const statusClass = "rounded-full bg-lavender px-2.5 py-1 text-xs font-semibold text-violet";
 
-type DocDraft = Pick<PlanningDocument, "projectId" | "documentTitle" | "documentContent" | "documentStatus" | "service" | "environments" | "attachmentCount" | "attachments" | "referenceUrl">;
+type DocDraft = Pick<PlanningDocument, "projectId" | "documentTitle" | "documentContent" | "documentStatus" | "service" | "environments" | "attachmentCount" | "attachments" | "referenceUrl" | "referenceUrls"> & { attachmentFiles: File[] };
 type ReqDraft = Pick<
   PlanningRequirement,
-  "documentId" | "requirementTitle" | "requestType" | "priority" | "requirementStatus" | "assignee" | "requirementContent" | "referenceUrl" | "attachments" | "attachmentFiles"
+  "documentId" | "requirementTitle" | "requestType" | "priority" | "requirementStatus" | "assigneeId" | "assignee" | "requirementContent" | "referenceUrl" | "referenceUrls" | "attachments" | "attachmentFiles"
 >;
 
 export default function PlanningPage() {
@@ -45,9 +44,9 @@ export default function PlanningPage() {
 function PlanningContent() {
   const router = useRouter();
   const params = useSearchParams();
-  const projects = getMockProjects();
-  const [documents, setDocuments] = useState(() => getMockPlanningDocuments());
-  const [requirements, setRequirements] = useState(() => getMockPlanningRequirements());
+  const [projects, setProjects] = useState<Awaited<ReturnType<typeof fetchProjects>>>([]);
+  const [documents, setDocuments] = useState<PlanningDocument[]>([]);
+  const [requirements, setRequirements] = useState<PlanningRequirement[]>([]);
   const [projectId, setProjectId] = useState(params.get("projectId") ?? "ALL");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -61,6 +60,14 @@ function PlanningContent() {
   const [documentPanel, setDocumentPanel] = useState<"content" | "attachments" | null>(null);
   const serviceType = params.get("serviceType") as "ADMIN" | "USER" | null;
   const [environment, setEnvironment] = useState("DEV");
+
+  useEffect(() => { void fetchProjects().then(setProjects).catch(() => setNotice("프로젝트를 불러오지 못했습니다.")); }, []);
+  useEffect(() => {
+    if (!serviceType) return;
+    void listDocuments({ serviceType, environment, projectId, search }).then((items) => {
+      setDocuments(items.map((item) => ({ ...item, service: item.serviceType as "ADMIN" | "USER", environments: item.environments as ("DEV" | "STAGING" | "LIVE")[], attachmentCount: item.attachments.length, attachments: item.attachments })));
+    }).catch((error: unknown) => setNotice(error instanceof Error ? error.message : "기획문서를 불러오지 못했습니다."));
+  }, [serviceType, environment, projectId, search]);
 
   const visibleDocuments = useMemo(
     () =>
@@ -87,6 +94,13 @@ function PlanningContent() {
   const totalPages = Math.max(1, Math.ceil(selectedRequirements.length / PAGE_SIZE));
   const paged = selectedRequirements.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
+  useEffect(() => {
+    if (!selected) { setRequirements([]); return; }
+    void listRequirements(selected.documentId, { search: requirementSearch, requirementStatus, page: 1, pageSize: 100 }).then((result) => {
+      setRequirements(result.items.map((item) => ({ ...item, assignee: item.assignee ?? "", attachments: [], attachmentFiles: [] })));
+    }).catch((error: unknown) => setNotice(error instanceof Error ? error.message : "요구사항을 불러오지 못했습니다."));
+  }, [selected?.documentId, requirementSearch, requirementStatus]);
+
   if (!serviceType) return <ServiceSelection onSelect={(service) => router.push(`/planning?serviceType=${service}`)} />;
 
   function selectDocument(id: string, nextProjectId = projectId) {
@@ -102,7 +116,16 @@ function PlanningContent() {
     const first = documents.find((doc) => nextId === "ALL" || doc.projectId === nextId);
     if (first) selectDocument(first.documentId, nextId);
   }
-  function saveDocument(draft: DocDraft) {
+  async function saveDocument(draft: DocDraft) {
+    try {
+      const documentId = await persistDocument({ projectId: draft.projectId, documentTitle: draft.documentTitle, documentContent: draft.documentContent, documentStatus: draft.documentStatus, serviceType: draft.service ?? serviceType!, environments: draft.environments ?? [environment], referenceUrls: (draft.referenceUrls ?? []).filter(Boolean) }, docDrawer && docDrawer !== "new" ? docDrawer.documentId : undefined);
+      if (draft.attachmentFiles.length) await uploadDocumentAttachments(documentId, draft.attachmentFiles);
+      setDocDrawer(null); setNotice("기획문서를 저장했습니다.");
+      const items = await listDocuments({ serviceType: serviceType!, environment, projectId, search });
+      setDocuments(items.map((item) => ({ ...item, service: item.serviceType as "ADMIN" | "USER", environments: item.environments as ("DEV" | "STAGING" | "LIVE")[], attachmentCount: item.attachments.length, attachments: item.attachments })));
+    } catch (error) { setNotice(error instanceof Error ? error.message : "기획문서를 저장하지 못했습니다."); }
+  }
+  function oldSaveDocument(draft: DocDraft) {
     const project = projects.find((item) => item.projectId === draft.projectId);
     if (!project) return;
     if (docDrawer === "new") {
@@ -131,7 +154,16 @@ function PlanningContent() {
       setNotice("기획문서를 목업 목록에서 수정했습니다. 새로고침하면 초기화됩니다.");
     }
   }
-  function saveRequirement(draft: ReqDraft) {
+  async function saveRequirement(draft: ReqDraft) {
+    if (!selected) return;
+    try {
+      await persistRequirement(selected.documentId, { requirementTitle: draft.requirementTitle, requirementContent: draft.requirementContent, requestType: draft.requestType, priority: draft.priority, requirementStatus: draft.requirementStatus, assigneeId: draft.assigneeId, referenceUrls: (draft.referenceUrls ?? []).filter(Boolean) }, reqDrawer && reqDrawer !== "new" ? reqDrawer.requirementId : undefined);
+      setReqDrawer(null); setNotice("요구사항을 저장했습니다.");
+      const result = await listRequirements(selected.documentId, { search: requirementSearch, requirementStatus, page: 1, pageSize: 100 });
+      setRequirements(result.items.map((item) => ({ ...item, assignee: item.assignee ?? "", attachments: [], attachmentFiles: [] })));
+    } catch (error) { setNotice(error instanceof Error ? error.message : "요구사항을 저장하지 못했습니다."); }
+  }
+  function oldSaveRequirement(draft: ReqDraft) {
     if (!selected) return;
     if (reqDrawer === "new") {
       const next = createMockRequirement({
@@ -151,7 +183,12 @@ function PlanningContent() {
       setNotice("요구사항을 목업 목록에서 수정했습니다. 새로고침하면 초기화됩니다.");
     }
   }
-  function deleteDocument() {
+  async function deleteDocument() {
+    if (!selected) return;
+    try { await removeDocument(selected.documentId); setNotice("기획문서를 삭제했습니다."); setDocuments((items) => items.filter((item) => item.documentId !== selected.documentId)); }
+    catch (error) { setNotice(error instanceof Error ? error.message : "기획문서를 삭제하지 못했습니다."); }
+  }
+  function oldDeleteDocument() {
     if (!selected) return;
     if (selectedRequirements.length) {
       setNotice("연결된 요구사항이 있어 기획문서를 삭제할 수 없습니다.");
@@ -164,6 +201,7 @@ function PlanningContent() {
     if (next) selectDocument(next.documentId);
     else router.replace("/planning");
   }
+  void oldSaveDocument; void oldSaveRequirement; void oldDeleteDocument;
 
   return (
     <WorkspaceShell pageTitle="기획 및 요구사항">
@@ -429,7 +467,7 @@ function ServiceSelection({ onSelect }: { onSelect: (service: "ADMIN" | "USER") 
 }
 function DocumentPreviewDrawer({ document, view, onClose }: { document: PlanningDocument; view: "content" | "attachments"; onClose: () => void }) {
   const title = view === "content" ? "\uAE30\uD68D \uB0B4\uC6A9" : "\uCCA8\uBD80\uD30C\uC77C";
-  return <Drawer title={title} onClose={onClose}><div className="space-y-3">{view === "content" ? <><div className="min-h-64 whitespace-pre-wrap rounded-xl border border-line bg-[#FAF8FF] p-4 text-sm leading-7 text-[#4D405F]">{document.documentContent || "\uB4F1\uB85D\uB41C \uAE30\uD68D \uB0B4\uC6A9\uC774 \uC5C6\uC2B5\uB2C8\uB2E4."}</div>{document.referenceUrl && <a href={document.referenceUrl} target="_blank" rel="noreferrer" className="inline-flex text-sm font-semibold text-violet hover:underline">참고 URL 열기</a>}</> : (document.attachments?.length ? <ul className="space-y-2">{document.attachments.map((file) => <li key={file.name} className="rounded-xl border border-line bg-[#FAF8FF] px-3 py-3 text-sm text-[#4D405F]"><FileText size={15} className="mr-2 inline text-violet" />{file.name}<span className="ml-2 text-xs text-muted">{(file.size / 1024).toFixed(1)} KB</span></li>)}</ul> : <p className="py-16 text-center text-sm text-[#978BAA]">{"\uCCA8\uBD80\uD30C\uC77C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4."}</p>)}</div></Drawer>;
+  return <Drawer title={title} onClose={onClose}><div className="space-y-3">{view === "content" ? <><div className="min-h-64 whitespace-pre-wrap rounded-xl border border-line bg-[#FAF8FF] p-4 text-sm leading-7 text-[#4D405F]">{document.documentContent || "\uB4F1\uB85D\uB41C \uAE30\uD68D \uB0B4\uC6A9\uC774 \uC5C6\uC2B5\uB2C8\uB2E4."}</div>{document.referenceUrl && <a href={document.referenceUrl} target="_blank" rel="noreferrer" className="inline-flex text-sm font-semibold text-violet hover:underline">참고 URL 열기</a>}</> : (document.attachments?.length ? <ul className="space-y-2">{document.attachments.map((file) => <li key={file.attachmentId ?? file.name} className="rounded-xl border border-line bg-[#FAF8FF] px-3 py-3 text-sm text-[#4D405F]"><FileText size={15} className="mr-2 inline text-violet" />{file.name}<span className="ml-2 text-xs text-muted">{(file.size / 1024).toFixed(1)} KB</span>{file.attachmentId && <button type="button" onClick={() => void downloadDocumentAttachment(file.attachmentId!, file.name)} className="ml-3 text-xs font-semibold text-violet hover:underline">다운로드</button>}</li>)}</ul> : <p className="py-16 text-center text-sm text-[#978BAA]">{"\uCCA8\uBD80\uD30C\uC77C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4."}</p>)}</div></Drawer>;
 }
 function Drawer({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -456,7 +494,7 @@ function DocumentDrawer({
   onSave,
 }: {
   document: PlanningDocument | null;
-  projects: ReturnType<typeof getMockProjects>;
+  projects: Awaited<ReturnType<typeof fetchProjects>>;
   initialProjectId: string;
   service: "ADMIN" | "USER";
   environment: "DEV" | "STAGING" | "LIVE";
@@ -472,7 +510,9 @@ function DocumentDrawer({
     environments: document?.environments ?? [environment],
     attachmentCount: document?.attachmentCount ?? 0,
     attachments: document?.attachments ?? [],
+    attachmentFiles: [],
     referenceUrl: document?.referenceUrl ?? "",
+    referenceUrls: document?.referenceUrls?.length ? document.referenceUrls : document?.referenceUrl ? [document.referenceUrl] : [""],
   });
   return (
     <Drawer title={document ? "기획문서 수정" : "기획문서 등록"} onClose={onClose}>
@@ -488,8 +528,8 @@ function DocumentDrawer({
         <Field label={"상태"}><select value={v.documentStatus} onChange={(e) => setV({ ...v, documentStatus: e.target.value as DocumentStatus })} className={input}>{Object.entries(documentStatusLabel).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>
         <div className="rounded-lg bg-[#FAF8FF] px-3 py-2 text-xs text-muted">{"현재 서비스 · "}{service}{" · "}{environment}{" · 등록 후 문서별 환경을 추가할 수 있습니다."}</div>
         <Field label={"문서 내용"}><textarea value={v.documentContent} onChange={(e) => setV({ ...v, documentContent: e.target.value })} className={input + " min-h-32"} /></Field>
-        <FileAttachmentField onFilesChange={(attachments) => setV({ ...v, attachments, attachmentCount: attachments.length })} />
-        <Field label={"참고 URL"}><input type="url" value={v.referenceUrl ?? ""} onChange={(e) => setV({ ...v, referenceUrl: e.target.value })} className={input} placeholder="https://figma.com/... 또는 문서 링크" /></Field>
+        <FileAttachmentField onFilesChange={(attachments) => setV({ ...v, attachments, attachmentCount: attachments.length })} onRawFilesChange={(attachmentFiles) => setV({ ...v, attachmentFiles })} />
+        <ReferenceUrlsField values={v.referenceUrls ?? [""]} onChange={(referenceUrls) => setV({ ...v, referenceUrls })} />
         <div className="flex justify-end gap-2 pt-3">
           <button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm">
             취소
@@ -507,23 +547,30 @@ function RequirementDrawer({ requirement, parentDocument, onClose, onSave }: { r
     requestType: requirement?.requestType ?? "NEW",
     priority: requirement?.priority ?? "NORMAL",
     requirementStatus: requirement?.requirementStatus ?? "NEW",
+    assigneeId: requirement?.assigneeId ?? null,
     assignee: requirement?.assignee ?? "",
     requirementContent: requirement?.requirementContent ?? "",
     referenceUrl: requirement?.referenceUrl ?? "",
+    referenceUrls: requirement?.referenceUrls?.length ? requirement.referenceUrls : requirement?.referenceUrl ? [requirement.referenceUrl] : [""],
     attachments: requirement?.attachments ?? [],
     attachmentFiles: requirement?.attachmentFiles ?? [],
   });
+  const [members, setMembers] = useState<Array<{ userId: number; userName: string }>>([]);
+  useEffect(() => { void fetchProjectMembers(parentDocument.projectId).then((items) => setMembers(items.filter((item) => item.invitationStatus === "ACCEPTED").map((item) => ({ userId: item.userId, userName: item.userName })))).catch(() => setMembers([])); }, [parentDocument.projectId]);
   return <Drawer title={requirement ? "요구사항 수정" : "요구사항 등록"} onClose={onClose}><form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (v.requirementTitle.trim()) onSave(v); }}>
     <div className="rounded-lg border border-line bg-[#FAF8FF] px-3 py-2 text-xs text-muted">{"상위 기획문서 설정 상속 · "}{parentDocument.service ?? "ADMIN"}{" · "}{(parentDocument.environments ?? ["DEV"]).join(" / ")}{" · 별도 환경 변경은 API 연동 후 제공됩니다."}</div>
     <Field label={"요구사항 제목"}><input required value={v.requirementTitle} onChange={(event) => setV({ ...v, requirementTitle: event.target.value })} className={input} /></Field>
     <div className="grid grid-cols-2 gap-3"><Field label={"구분"}><select value={v.requestType} onChange={(event) => setV({ ...v, requestType: event.target.value as RequirementType })} className={input}>{Object.entries(requirementTypeLabel).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field><Field label={"우선순위"}><select value={v.priority} onChange={(event) => setV({ ...v, priority: event.target.value as ReqDraft["priority"] })} className={input}>{Object.entries(priorityLabel).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field></div>
     <Field label={"진행상태"}><select value={v.requirementStatus} onChange={(event) => setV({ ...v, requirementStatus: event.target.value as RequirementProgressStatus })} className={input}>{Object.entries(requirementStatusLabel).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>
-    <Field label={"담당자"}><input value={v.assignee} onChange={(event) => setV({ ...v, assignee: event.target.value })} className={input} /></Field>
+    <Field label={"담당자"}><select value={v.assigneeId ?? ""} onChange={(event) => { const assigneeId = event.target.value ? Number(event.target.value) : null; const assignee = members.find((member) => member.userId === assigneeId)?.userName ?? ""; setV({ ...v, assigneeId, assignee }); }} className={input}><option value="">담당자 없음</option>{members.map((member) => <option key={member.userId} value={member.userId}>{member.userName}</option>)}</select></Field>
     <RichTextEditor label={"상세 요구사항"} value={v.requirementContent} onChange={(requirementContent) => setV({ ...v, requirementContent })} />
-    <Field label={"참고 URL"}><input type="url" value={v.referenceUrl ?? ""} onChange={(event) => setV({ ...v, referenceUrl: event.target.value })} className={input} placeholder="https://figma.com/... 또는 관련 문서 링크" /></Field>
+    <ReferenceUrlsField values={v.referenceUrls ?? [""]} onChange={(referenceUrls) => setV({ ...v, referenceUrls })} />
     <FileAttachmentField label={"첨부파일"} initialFiles={v.attachmentFiles} onFilesChange={(attachments) => setV({ ...v, attachments })} onRawFilesChange={(attachmentFiles) => setV({ ...v, attachmentFiles })} />
     <div className="flex justify-end gap-2 pt-3"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm">취소</button><button className="rounded-lg bg-violet px-4 py-2 text-sm font-semibold text-white">저장</button></div>
   </form></Drawer>;
+}
+function ReferenceUrlsField({ values, onChange }: { values: string[]; onChange: (values: string[]) => void }) {
+  return <Field label={"참고 URL"}><div className="space-y-2">{values.map((value, index) => <div key={index} className="flex gap-2"><input type="url" value={value} onChange={(event) => onChange(values.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} className={input} placeholder="https://figma.com/... 또는 관련 문서 링크" />{values.length > 1 && <button type="button" onClick={() => onChange(values.filter((_, itemIndex) => itemIndex !== index))} className="rounded-lg border border-line px-2 text-muted hover:text-rose-500" aria-label="참고 URL 삭제"><Trash2 size={15} /></button>}</div>)}<button type="button" onClick={() => onChange([...values, ""])} className="inline-flex items-center gap-1 text-sm font-semibold text-violet hover:underline"><Plus size={15} />URL 추가</button></div></Field>;
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
